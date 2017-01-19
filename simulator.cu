@@ -1,10 +1,12 @@
 #include "simulator.h"
+#include "input.h"
 #include "kernel.cu"
 
 #include <cuda.h>
 #include <curand.h>
 #include <vector>
 #include <cstdio>
+#include <fstream>
 #include <iostream>
 
 #define CUDA_CALL(x) do { if((x) != cudaSuccess) { \
@@ -20,7 +22,7 @@
 const int block_size = 512;
 const int decoders = 100;
 const int blocks = decoders;
-const float SNR = 2;
+const float SNR = 0.01;
 const int MAX_ITERATIONS = 15;
 const int NUMBER_OF_CODEWORDS = 1000 * 1000;
 
@@ -87,93 +89,82 @@ int main()
 }
 
 void fillInput(
-        CodeInfo** codeInfo, Edge** edgesFromVariable, Edge** edgesFromCheck)
+        CodeInfo** codeInfo,
+        Edge** edgesFromVariable,
+        Edge** edgesFromCheck)
 {
+    Matrix H;
+    std::ifstream matrixStream("matrix.txt");
+    readMatrix(matrixStream, &H);
+
     MALLOC(codeInfo, sizeof(CodeInfo));
-    freopen("matrix.txt", "r", stdin);
-    int n, k;
-    std::cin >> k >> n;
-    (*codeInfo)->checkNodes = k;
-    (*codeInfo)->varNodes = n;
-    std::vector<std::vector<int>> h(k, std::vector<int>(n));
-    for (int i = 0; i < k; i++)
-    {
-        for (int j = 0; j < n; j++)
-        {
-            std::cin >> h[i][j];
-            if (h[i][j])
-                (*codeInfo)->totalEdges++;
-        }
-    }
+    (*codeInfo)->checkNodes = H.k;
+    (*codeInfo)->varNodes = H.n;
+    (*codeInfo)->totalEdges = H.totalCells;
 
     MALLOC(edgesFromVariable, (*codeInfo)->totalEdges * sizeof(Edge));
     MALLOC(edgesFromCheck, (*codeInfo)->totalEdges * sizeof(Edge));
 
     int currentEdge = 0;
-    std::vector<std::vector<int>> e(k, std::vector<int>(n));
-    for (int j = 0; j < n; j++)
+    std::vector<int> e(H.k * H.n);
+    for (int j = 0; j < H.n; j++)
     {
         int connectedToNode = 0;
         int absoluteStartIndex = currentEdge;
-        for (int i = k - 1; i >= 0; i--)
+        for (auto cIt = H.cols[j].rbegin(); cIt != H.cols[j].rend(); cIt++)
         {
-            if (h[i][j])
-            {
-                e[i][j] = currentEdge++;
-                Edge& edge = (*edgesFromVariable)[e[i][j]];
-                edge.index = e[i][j];
-                edge.vn = j;
-                edge.cn = i;
-                edge.absoluteStartIndex = absoluteStartIndex;
-                edge.relativeIndexFromNode = connectedToNode;
-                connectedToNode++;
-            }
+            int i = cIt->first;
+            int id = cIt->second;
+            e[id] = currentEdge++;
+            Edge& edge = (*edgesFromVariable)[e[id]];
+            edge.index = e[id];
+            edge.vn = j;
+            edge.cn = i;
+            edge.absoluteStartIndex = absoluteStartIndex;
+            edge.relativeIndexFromNode = connectedToNode;
+            connectedToNode++;
         }
-        for (int i = k - 1; i >= 0; i--)
+        for (auto cIt = H.cols[j].rbegin(); cIt != H.cols[j].rend(); cIt++)
         {
-            if (h[i][j])
-            {
-                Edge& edge = (*edgesFromVariable)[e[i][j]];
-                edge.edgesConnectedToNode = connectedToNode;
-                /*std::cout << edge.index << " " << edge.vn << " " << edge.cn
-                    << " " << edge.edgesConnectedToNode
-                    << " " << edge.absoluteStartIndex
-                    << " " << edge.relativeIndexFromNode << std::endl;*/
-            }
+            int i = cIt->first;
+            int id = cIt->second;
+            Edge& edge = (*edgesFromVariable)[e[id]];
+            edge.edgesConnectedToNode = connectedToNode;
+            std::cout << edge.index << " " << edge.vn << " " << edge.cn
+                << " " << edge.edgesConnectedToNode
+                << " " << edge.absoluteStartIndex
+                << " " << edge.relativeIndexFromNode << std::endl;
         }
     }
 
-    //std::cout << "Table II" << std::endl;
+    std::cout << "Table II" << std::endl;
     currentEdge = 0;
-    for (int i = 0; i < k; i++)
+    for (int i = 0; i < H.k; i++)
     {
         int connectedToNode = 0;
         int absoluteStartIndex = currentEdge;
-        for (int j = 0; j < n; j++)
+        for (auto jIdPair : H.rows[i])
         {
-            if (h[i][j])
-            {
-                currentEdge++;
-                Edge& edge = (*edgesFromCheck)[e[i][j]];
-                edge.index = e[i][j];
-                edge.vn = j;
-                edge.cn = i;
-                edge.absoluteStartIndex = absoluteStartIndex;
-                edge.relativeIndexFromNode = connectedToNode;
-                connectedToNode++;
-            }
+            int j = jIdPair.first;
+            int id = jIdPair.second;
+            currentEdge++;
+            Edge& edge = (*edgesFromCheck)[e[id]];
+            edge.index = e[id];
+            edge.vn = j;
+            edge.cn = i;
+            edge.absoluteStartIndex = absoluteStartIndex;
+            edge.relativeIndexFromNode = connectedToNode;
+            connectedToNode++;
         }
-        for (int j = 0; j < n; j++)
+        for (auto jIdPair : H.rows[i])
         {
-            if (h[i][j])
-            {
-                Edge& edge = (*edgesFromCheck)[e[i][j]];
-                edge.edgesConnectedToNode = connectedToNode;
-                /*std::cout << edge.index << " " << edge.vn << " " << edge.cn
-                    << " " << edge.edgesConnectedToNode
-                    << " " << edge.absoluteStartIndex
-                    << " " << edge.relativeIndexFromNode << std::endl;*/
-            }
+            int id = jIdPair.second;
+            Edge& edge = (*edgesFromCheck)[e[id]];
+            edge.edgesConnectedToNode = connectedToNode;
+            std::cout << edge.index << " " << edge.vn << " " << edge.cn
+                << " " << edge.edgesConnectedToNode
+                << " " << edge.absoluteStartIndex
+                << " " << edge.relativeIndexFromNode << std::endl;
         }
     }
 }
