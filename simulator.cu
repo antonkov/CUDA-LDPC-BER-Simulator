@@ -22,7 +22,7 @@ const int decoders = 100;
 const int blocks = decoders;
 const float SNR = 2;
 const int MAX_ITERATIONS = 15;
-const int NUMBER_OF_CODEWORDS = 10 * 1000;
+const int NUMBER_OF_CODEWORDS = 1000 * 1000;
 
 void fillInput(CodeInfo**, Edge**, Edge**);
 
@@ -47,12 +47,6 @@ int main()
     curandGenerator_t gen;
     CURAND_CALL(curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT));
     CURAND_CALL(curandSetPseudoRandomGeneratorSeed(gen, 19ULL));
-    // Generate n float on device with 
-    // normal distribution mean = -1, stddev = sqrt(sigma2)
-    CURAND_CALL(curandGenerateNormal(gen, noisedVector, 
-                noisedVectorSize, -1.0, sqrt(sigma2)));
-    CUDA_CALL(cudaDeviceSynchronize());
-
     float* estimation;
     MALLOC(&estimation, noisedVectorSize * sizeof(float));
     ErrorInfo* errorInfo;
@@ -63,6 +57,12 @@ int main()
     float cntBits = cntFrames * codeInfo->varNodes;
     for (int run = 0; run < numberKernelRuns; run++)
     {
+        // Generate n float on device with 
+        // normal distribution mean = -1, stddev = sqrt(sigma2)
+        CURAND_CALL(curandGenerateNormal(gen, noisedVector, 
+                    noisedVectorSize, -1.0, sqrt(sigma2)));
+        CUDA_CALL(cudaDeviceSynchronize());
+
         // Kernel execution
         decodeAWGN<<<blocks, block_size>>>(
                 codeInfo,
