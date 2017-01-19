@@ -14,3 +14,8 @@ struct CodeInfo {
     int varNodes;   // number of variable nodes
     int checkNodes; // number of check nodes
 };
+
+struct ErrorInfo {
+    long long bitErrors;
+    long long frameErrors;
+};

@@ -21,11 +21,11 @@ __device__ void iterateToVariables(
         }
         r0 = (1 + r0) / 2;
         r1 = 1 - r0;
-        probR[eSt + p] = r1;
+        probR[eSt + p + threadIdx.x] = r1;
     }
 }
 
-__device__ void iterateToCheck(
+__device__ void iterateToChecks(
         CodeInfo* codeInfo,
         Edge* edges,
         float* probP,
@@ -45,7 +45,33 @@ __device__ void iterateToCheck(
             int i = e.absoluteStartIndex + id;
             q1 *= probR[eSt + i];
         }
-        probQ[eSt + p] = q1;
+        probQ[eSt + p + threadIdx.x] = q1;
+    }
+}
+
+__device__ void estimationCalc(
+        CodeInfo* codeInfo, 
+        Edge* edges,
+        float* probR,
+        float* estimation)
+{
+    int eSt = blockIdx.x * codeInfo->totalEdges;
+    for (int p = 0; p < codeInfo->totalEdges; p += blockDim.x)
+    {
+        Edge& e = edges[p + threadIdx.x];
+        float q1 = probR[eSt + p + threadIdx.x];
+        float q0 = 1 - q1;
+        for (int id = 0; id < e.edgesConnectedToNode; id++)
+        {
+            int i = e.absoluteStartIndex + id;
+            q1 *= probR[eSt + p + i];
+            q0 *= (1 - probR[eSt + p + i]);
+        }
+        int index = e.vn;
+        if (q1 > q0)
+            estimation[index] = 1;
+        else
+            estimation[index] = 0;
     }
 }
 
@@ -57,7 +83,10 @@ __global__ void decodeAWGN(
         float* probR,
         float* probQ,
         float sigma2,
-        float* noisedVector)
+        float* estimation,
+        float* noisedVector,
+        int MAX_ITERATIONS,
+        ErrorInfo* errorInfo)
 {
     int totalEdges = codeInfo->totalEdges;
     // start for current decoder in data arrays indexed by edges
@@ -65,53 +94,54 @@ __global__ void decodeAWGN(
     // start for current decoder in data arrays indexed by vars
     int vSt = blockIdx.x * codeInfo->varNodes;
 
-    // initial messages to check nodes
-    for (int p = threadIdx.x; p < totalEdges; p += blockDim.x)
+    for (int iter = 0; iter < MAX_ITERATIONS; iter++)
     {
-        // initProbCalcAWGN
-        int j = edgesFromVariable[p].vn;
-        float y = noisedVector[vSt + j];
-        probP[vSt + j] = 1.0 / (1.0 + exp(-2 * y / sigma2));
-        probQ[eSt + p] = probP[vSt + j];
+        if (iter == 0) {
+            // initial messages to check nodes
+            for (int p = threadIdx.x; p < totalEdges; p += blockDim.x)
+            {
+                // initProbCalcAWGN
+                int j = edgesFromVariable[p].vn;
+                float y = noisedVector[vSt + j];
+                probP[vSt + j] = 1.0 / (1.0 + exp(-2 * y / sigma2));
+                probQ[eSt + p] = probP[vSt + j];
+            }
+            __syncthreads();
+        } else {
+            // iteration to check nodes
+            for (int p = threadIdx.x; p < totalEdges; p += blockDim.x)
+                iterateToChecks(codeInfo, edgesFromVariable, probP, probR, probQ);
+            __syncthreads();
+        }
+        // iteration back to variable nodes
+        for (int p = threadIdx.x; p < totalEdges; p += blockDim.x)
+            iterateToVariables(codeInfo, edgesFromCheck, probQ, probR);
+        __syncthreads();
+        // calculate the estimation
+        for (int p = threadIdx.x; p < totalEdges; p += blockDim.x)
+            estimationCalc(codeInfo, edgesFromVariable, probR, estimation);
+        __syncthreads();
+        // check that zero
+        __shared__ bool allZero;
+        allZero = true;
+        __syncthreads();
+        for (int p = threadIdx.x; p < totalEdges; p += blockDim.x)
+        {
+            int j = edgesFromVariable[p].vn;
+            if (estimation[vSt + j])
+                allZero = false;
+        }
+        __syncthreads();
+        if (allZero) {
+            return;
+        }
     }
-    __syncthreads();
-    // iteration back to variable nodes
-    for (int p = threadIdx.x; p < totalEdges; p += blockDim.x)
-    {
-        iterateToVariables(codeInfo, edgesFromCheck, probQ, probR);
+    // calculating error
+    if (threadIdx.x == 0)
+    { // to count only once
+        errorInfo->frameErrors++;
+        for (int i = 0; i < codeInfo->varNodes; i++)
+            if (estimation[vSt + i])
+                errorInfo->bitErrors++;
     }
-    __syncthreads();
-    // calculate the estimation
-    for (int p = threadIdx.x; p < totalEdges; p += blockDim.x)
-    {
-    }
-    __syncthreads();
-    // calculate the syndrome
-    for (int p = threadIdx.x; p < totalEdges; p += blockDim.x)
-    {
-    }
-    __syncthreads();
 }
-
-/*__global__ void berSimulate(
-        CodeInfo* codeInfo,
-        Edge* edgesFromVariable,
-        Edge* edgesFromCheck,
-        EdgeData* edgeDataInitToCheck,
-        EdgeData* edgeDataToVariable,
-        EdgeData* edgeDataToCheck,
-        float sigma2,
-        float* noisedVector)
-{
-    decodeAWGN(
-            codeInfo,
-            edgesFromVariable,
-            edgesFromCheck,
-            edgeDataInitToCheck,
-            edgeDataToVariable,
-            edgeDataToCheck,
-            sigma2,
-            noisedVector);
-}
-
-*/

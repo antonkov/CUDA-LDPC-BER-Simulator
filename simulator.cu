@@ -1,10 +1,17 @@
 #include "simulator.h"
 #include "kernel.cu"
+
+#include <cuda.h>
+#include <curand.h>
 #include <vector>
 #include <cstdio>
 #include <iostream>
 
 #define CUDA_CALL(x) do { if((x) != cudaSuccess) { \
+    printf("Error at %s:%d\n",__FILE__,__LINE__); \
+    exit(EXIT_FAILURE);}} while(0)
+
+#define CURAND_CALL(x) do { if((x) != CURAND_STATUS_SUCCESS) { \
     printf("Error at %s:%d\n",__FILE__,__LINE__); \
     exit(EXIT_FAILURE);}} while(0)
 
@@ -14,6 +21,8 @@ const int block_size = 512;
 const int decoders = 100;
 const int blocks = decoders;
 const float SNR = 2;
+const int MAX_ITERATIONS = 15;
+const int NUMBER_OF_CODEWORDS = 10 * 1000;
 
 void fillInput(CodeInfo**, Edge**, Edge**);
 
@@ -34,25 +43,47 @@ int main()
 
     float* noisedVector;
     int noisedVectorSize = decoders * codeInfo->varNodes;
-    MALLOC(&noisedVector, noisedVectorSize);
-    // adding noise
-    for (int i = 0; i < noisedVectorSize; i++)
-    {
-        noisedVector[i] = -1;
-    }
-
-    // Kernel execution
-    decodeAWGN<<<blocks, block_size>>>(
-            codeInfo,
-            edgesFromVariable,
-            edgesFromCheck,
-            probP,
-            probQ,
-            probR,
-            sigma2,
-            noisedVector);
-    //cudaMemcpy(berOut, berOut_obj, sizeof(float)
+    MALLOC(&noisedVector, noisedVectorSize * sizeof(float));
+    curandGenerator_t gen;
+    CURAND_CALL(curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT));
+    CURAND_CALL(curandSetPseudoRandomGeneratorSeed(gen, 19ULL));
+    // Generate n float on device with 
+    // normal distribution mean = -1, stddev = sqrt(sigma2)
+    CURAND_CALL(curandGenerateNormal(gen, noisedVector, 
+                noisedVectorSize, -1.0, sqrt(sigma2)));
     CUDA_CALL(cudaDeviceSynchronize());
+
+    float* estimation;
+    MALLOC(&estimation, noisedVectorSize * sizeof(float));
+    ErrorInfo* errorInfo;
+    MALLOC(&errorInfo, sizeof(ErrorInfo));
+
+    int numberKernelRuns = NUMBER_OF_CODEWORDS / decoders;
+    float cntFrames = decoders * numberKernelRuns;
+    float cntBits = cntFrames * codeInfo->varNodes;
+    for (int run = 0; run < numberKernelRuns; run++)
+    {
+        // Kernel execution
+        decodeAWGN<<<blocks, block_size>>>(
+                codeInfo,
+                edgesFromVariable,
+                edgesFromCheck,
+                probP,
+                probQ,
+                probR,
+                sigma2,
+                estimation,
+                noisedVector,
+                MAX_ITERATIONS,
+                errorInfo);
+        CUDA_CALL(cudaDeviceSynchronize());
+    }
+    //cudaMemcpy(berOut, berOut_obj, sizeof(float)
+    std::cout << "Results" << std::endl;
+    std::cout << "BER " << errorInfo->bitErrors * 100.0 / cntBits  << "%"
+        <<  std::endl;
+    std::cout << "FER " << errorInfo->frameErrors * 100.0 / cntFrames << "%"
+        << std::endl;
 }
 
 void fillInput(
