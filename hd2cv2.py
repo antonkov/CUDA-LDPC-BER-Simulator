@@ -69,13 +69,13 @@ H522 = hd2cv2(base522, M)
 #Sucessful decoding rate for snr = 4 and max_iter = 50 is 99.5%
 #Sucessful decoding rate for snr = 4 and max_iter = 15 is 98.1%
 
-H = H564
+H = H522
 k, n = H.shape
 #tG = pyldpc.CodingMatrix(H)
 print("k,n = ",(k,n))
 
 print_matrix = True
-with open("h564.mtx", "w") as f:
+with open("h522.mtx", "w") as f:
     f.write("coo_matrix\n")
     f.write(str(k) + " " + str(n) + "\n")
     cooH = coo_matrix(H)

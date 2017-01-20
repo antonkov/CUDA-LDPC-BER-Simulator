@@ -19,23 +19,57 @@
     exit(EXIT_FAILURE);}} while(0)
 
 #define MALLOC(x, y) CUDA_CALL(cudaMallocManaged(x, y))
+#define FREE(x) CUDA_CALL(cudaFree(x))
 
 const int block_size = 512;
 const int decoders = 100;
 const int blocks = decoders;
 const float SNR = 2;
 const int MAX_ITERATIONS = 15;
-const int NUMBER_OF_CODEWORDS = 10 * 1000;
+const int NUMBER_OF_CODEWORDS = 100 * 1000;
 
 void fillInput(std::string, CodeInfo**, Edge**, Edge**);
+SimulationReport simulate(std::string);
 
 int main(int argc, char* argv[])
 {
-    std::string filename = "matrix.txt";
-    if (argc > 1)
+    std::vector<std::string> inputFilenames;
+    for (int i = 1; i < argc; i++)
     {
-        filename = argv[1];
+        inputFilenames.push_back(argv[i]);
     }
+
+    std::cout << "Results" << std::endl;
+    std::cout << "Filename    Time(ms)      BER    FER" << std::endl;
+
+    // Create time measure structures
+    cudaEvent_t start, stop;
+    CUDA_CALL(cudaEventCreate(&start));
+    CUDA_CALL(cudaEventCreate(&stop));
+
+    for (auto filename : inputFilenames)
+    {
+        cudaEventRecord(start);
+
+        // Calling main simulation
+        SimulationReport report = simulate(filename);
+
+        cudaEventRecord(stop);
+
+        cudaEventSynchronize(stop);
+        float milliseconds = 0;
+        cudaEventElapsedTime(&milliseconds, start, stop);
+
+        std::cout << filename << "   ";
+        std::cout << milliseconds << "    ";
+        std::cout << report.BER << "%" << "     ";
+        std::cout << report.FER << "%" << "     ";
+        std::cout << std::endl;
+    }
+}
+
+SimulationReport simulate(std::string filename)
+{
     CodeInfo* codeInfo;
     Edge* edgesFromVariable;
     Edge* edgesFromCheck;
@@ -62,15 +96,9 @@ int main(int argc, char* argv[])
     ErrorInfo* errorInfo;
     MALLOC(&errorInfo, sizeof(ErrorInfo));
 
-    // Create time measure structures
-    cudaEvent_t start, stop;
-    CUDA_CALL(cudaEventCreate(&start));
-    CUDA_CALL(cudaEventCreate(&stop));
-
     int numberKernelRuns = NUMBER_OF_CODEWORDS / decoders;
     float cntFrames = decoders * numberKernelRuns;
     float cntBits = cntFrames * codeInfo->varNodes;
-    cudaEventRecord(start);
     for (int run = 0; run < numberKernelRuns; run++)
     {
         // Generate n float on device with 
@@ -91,19 +119,25 @@ int main(int argc, char* argv[])
                 MAX_ITERATIONS,
                 errorInfo);
     }
-    cudaEventRecord(stop);
+    CUDA_CALL(cudaDeviceSynchronize());
+    float BER = errorInfo->bitErrors * 100.0 / cntBits;
+    float FER = errorInfo->frameErrors * 100.0 / cntFrames;
 
-    cudaEventSynchronize(stop);
-    float milliseconds = 0;
-    cudaEventElapsedTime(&milliseconds, start, stop);
+    // Freeing resources
+    FREE(errorInfo);
+    FREE(estimation);
+    FREE(noisedVector);
+    FREE(probR);
+    FREE(probQ);
+    FREE(probP);
+    FREE(edgesFromCheck);
+    FREE(edgesFromVariable);
+    FREE(codeInfo);
 
-    std::cout << "Time: " << milliseconds << " ms" << std::endl;
-    //cudaMemcpy(berOut, berOut_obj, sizeof(float)
-    std::cout << "Results" << std::endl;
-    std::cout << "BER " << errorInfo->bitErrors * 100.0 / cntBits  << "%"
-        <<  std::endl;
-    std::cout << "FER " << errorInfo->frameErrors * 100.0 / cntFrames << "%"
-        << std::endl;
+    SimulationReport report;
+    report.BER = BER;
+    report.FER = FER;
+    return report;
 }
 
 void fillInput(

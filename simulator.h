@@ -19,3 +19,8 @@ struct ErrorInfo {
     unsigned long long bitErrors;
     unsigned long long frameErrors;
 };
+
+struct SimulationReport {
+    float FER;
+    float BER;
+};
