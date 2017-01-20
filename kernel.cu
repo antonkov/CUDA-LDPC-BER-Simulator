@@ -28,6 +28,8 @@ __device__ void iterateToZ(
             fSum += logtanh(abs(L[i]));
         }
         Z[p] = alphaProd * logtanh(fSum);
+        Z[p] = min(Z[p], 19.07);
+        Z[p] = max(Z[p], -19.07);
     }
 }
 
@@ -63,7 +65,7 @@ __device__ void estimationCalc(
     for (int p = threadIdx.x; p < codeInfo->totalEdges; p += blockDim.x)
     {
         Edge& e = edges[p];
-        float sumZ = y[p];
+        float sumZ = y[e.vn];
         for (int id = 0; id < e.edgesConnectedToNode; id++)
         {
             int i = e.absoluteStartIndex + id;
