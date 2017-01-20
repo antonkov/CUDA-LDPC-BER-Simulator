@@ -1,70 +1,76 @@
 #include "simulator.h"
 
-__device__ void iterateToVariables(
+__device__ float logtanh(float x)
+{
+    float t = exp(x);
+    float y = log((t + 1.0) / (t - 1.0));
+    return y;
+}
+
+__device__ void iterateToZ(
         CodeInfo* codeInfo,
         Edge* edges,
-        float* probQ,
-        float* probR)
+        float* L,
+        float* Z)
 {
     for (int p = threadIdx.x; p < codeInfo->totalEdges; p += blockDim.x)
     {
         Edge& e = edges[p];
-        float r0 = 1;
-        float r1 = 1;
+        float alphaProd = 1;
+        float fSum = 0;
         for (int id = 0; id < e.edgesConnectedToNode; id++)
         {
             if (id == e.relativeIndexFromNode)
                 continue;
             int i = e.absoluteStartIndex + id;
-            r0 *= (1 - 2 * probQ[i]);
+            float alpha = (L[i] < 0) ? -1 : 1;
+            alphaProd *= alpha;
+            fSum += logtanh(abs(L[i]));
         }
-        r0 = (1 + r0) / 2;
-        r1 = 1 - r0;
-        probR[p] = r1;
+        Z[p] = alphaProd * logtanh(fSum);
     }
 }
 
-__device__ void iterateToChecks(
+__device__ void iterateToL(
         CodeInfo* codeInfo,
         Edge* edges,
-        float* probP,
-        float* probR,
-        float* probQ)
+        float* y,
+        float* Z,
+        float* L)
 {
     for (int p = threadIdx.x; p < codeInfo->totalEdges; p += blockDim.x)
     {
         Edge& e = edges[p];
-        float q1 = probP[e.vn];
+        float val = y[e.vn];
         for (int id = 0; id < e.edgesConnectedToNode; id++)
         {
             if (id == e.relativeIndexFromNode)
                 continue;
             int i = e.absoluteStartIndex + id;
-            q1 *= probR[i];
+            val += Z[i];
         }
-        probQ[p] = q1;
+        L[p] = val;
     }
 }
 
 __device__ void estimationCalc(
         CodeInfo* codeInfo, 
         Edge* edges,
-        float* probR,
+        float* y,
+        float* Z,
         float* estimation)
 {
     for (int p = threadIdx.x; p < codeInfo->totalEdges; p += blockDim.x)
     {
         Edge& e = edges[p];
-        float q1 = probR[p];
-        float q0 = 1 - q1;
+        float sumZ = y[p];
         for (int id = 0; id < e.edgesConnectedToNode; id++)
         {
             int i = e.absoluteStartIndex + id;
-            q1 *= probR[i];
-            q0 *= (1 - probR[i]);
+            sumZ += Z[i];
         }
         int index = e.vn;
-        if (q1 > q0)
+        if (sumZ < 0)
             estimation[index] = 1;
         else
             estimation[index] = 0;
@@ -75,66 +81,50 @@ __global__ void decodeAWGN(
         CodeInfo* codeInfo,
         Edge* edgesFromVariable,
         Edge* edgesFromCheck,
-        float* probP,
-        float* probQ,
-        float* probR,
+        float* y,
+        float* L,
+        float* Z,
         float sigma2,
         float* estimation,
         float* noisedVector,
         int MAX_ITERATIONS,
         ErrorInfo* errorInfo)
 {
-    int totalEdges = codeInfo->totalEdges;
     {
         // start for current decoder in data arrays indexed by edges
         int eSt = blockIdx.x * codeInfo->totalEdges;
-        probQ += eSt;
-        probR += eSt;
+        L += eSt;
+        Z += eSt;
         // start for current decoder in data arrays indexed by vars
         int vSt = blockIdx.x * codeInfo->varNodes;
-        probP += vSt;
+        y += vSt;
         estimation += vSt;
         noisedVector += vSt;
     }
+    // initial messages to check nodes
+    for (int p = threadIdx.x; p < codeInfo->varNodes; p += blockDim.x)
+        y[p] = -2 * noisedVector[p] / sigma2;
+    for (int p = threadIdx.x; p < codeInfo->totalEdges; p += blockDim.x)
+        Z[p] = L[p] = 0;
+    __syncthreads();
 
     __shared__ int notZeros;
     for (int iter = 0; iter < MAX_ITERATIONS; iter++)
     {
-        if (iter == 0) {
-            // initial messages to check nodes
-            for (int p = threadIdx.x; p < totalEdges; p += blockDim.x)
-            {
-                // initProbCalcAWGN
-                int j = edgesFromVariable[p].vn;
-                float y = noisedVector[j];
-                probP[j] = 1.0 / (1.0 + exp(-2 * y / sigma2));
-                probQ[p] = probP[j];
-            }
-            __syncthreads();
-        } else {
-            // iteration to check nodes
-            for (int p = threadIdx.x; p < totalEdges; p += blockDim.x)
-                iterateToChecks(codeInfo, edgesFromVariable, probP, probR, probQ);
-            __syncthreads();
-        }
-        // iteration back to variable nodes
-        for (int p = threadIdx.x; p < totalEdges; p += blockDim.x)
-            iterateToVariables(codeInfo, edgesFromCheck, probQ, probR);
+        iterateToL(codeInfo, edgesFromVariable, y, Z, L);
+        __syncthreads();
+        iterateToZ(codeInfo, edgesFromCheck, L, Z);
         __syncthreads();
         // calculate the estimation
-        for (int p = threadIdx.x; p < totalEdges; p += blockDim.x)
-            estimationCalc(codeInfo, edgesFromVariable, probR, estimation);
+        estimationCalc(codeInfo, edgesFromVariable, y, Z, estimation);
         __syncthreads();
         // check that zero
         if (threadIdx.x == 0)
             notZeros = 0;
         __syncthreads();
-        for (int p = threadIdx.x; p < totalEdges; p += blockDim.x)
-        {
-            Edge& e = edgesFromVariable[p];
-            if (e.relativeIndexFromNode == 0 && estimation[e.vn])
+        for (int p = threadIdx.x; p < codeInfo->varNodes; p += blockDim.x)
+            if (estimation[p])
                 atomicAdd(&notZeros, 1);
-        }
         __syncthreads();
         if (notZeros == 0) {
             return;

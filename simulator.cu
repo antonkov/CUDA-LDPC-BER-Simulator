@@ -25,7 +25,7 @@ const int decoders = 100;
 const int blocks = decoders;
 const float SNR = 2;
 const int MAX_ITERATIONS = 15;
-const int NUMBER_OF_CODEWORDS = 100 * 1000;
+const int NUMBER_OF_CODEWORDS = 10 * 1000;
 
 void fillInput(std::string, CodeInfo**, Edge**, Edge**);
 
@@ -51,6 +51,8 @@ int main(int argc, char* argv[])
 
     float* noisedVector;
     int noisedVectorSize = decoders * codeInfo->varNodes;
+    if (noisedVectorSize % 2 == 1)
+        noisedVectorSize++; // curandGenerateNormal works only with even
     MALLOC(&noisedVector, noisedVectorSize * sizeof(float));
     curandGenerator_t gen;
     CURAND_CALL(curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT));
@@ -75,7 +77,6 @@ int main(int argc, char* argv[])
         // normal distribution mean = -1, stddev = sqrt(sigma2)
         CURAND_CALL(curandGenerateNormal(gen, noisedVector, 
                     noisedVectorSize, -1.0, sqrt(sigma2)));
-
         // Kernel execution
         decodeAWGN<<<blocks, block_size>>>(
                 codeInfo,
