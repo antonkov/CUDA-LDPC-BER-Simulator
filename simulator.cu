@@ -4,6 +4,7 @@
 
 #include <cuda.h>
 #include <curand.h>
+#include <string>
 #include <vector>
 #include <cstdio>
 #include <fstream>
@@ -22,18 +23,23 @@
 const int block_size = 512;
 const int decoders = 100;
 const int blocks = decoders;
-const float SNR = 0.01;
+const float SNR = 2;
 const int MAX_ITERATIONS = 15;
-const int NUMBER_OF_CODEWORDS = 1000 * 1000;
+const int NUMBER_OF_CODEWORDS = 100 * 1000;
 
-void fillInput(CodeInfo**, Edge**, Edge**);
+void fillInput(std::string, CodeInfo**, Edge**, Edge**);
 
-int main()
+int main(int argc, char* argv[])
 {
+    std::string filename = "matrix.txt";
+    if (argc > 1)
+    {
+        filename = argv[1];
+    }
     CodeInfo* codeInfo;
     Edge* edgesFromVariable;
     Edge* edgesFromCheck;
-    fillInput(&codeInfo, &edgesFromVariable, &edgesFromCheck);
+    fillInput(filename, &codeInfo, &edgesFromVariable, &edgesFromCheck);
     float sigma2 = pow(10.0, -SNR / 10);
 
     float* probP;
@@ -54,16 +60,21 @@ int main()
     ErrorInfo* errorInfo;
     MALLOC(&errorInfo, sizeof(ErrorInfo));
 
+    // Create time measure structures
+    cudaEvent_t start, stop;
+    CUDA_CALL(cudaEventCreate(&start));
+    CUDA_CALL(cudaEventCreate(&stop));
+
     int numberKernelRuns = NUMBER_OF_CODEWORDS / decoders;
     float cntFrames = decoders * numberKernelRuns;
     float cntBits = cntFrames * codeInfo->varNodes;
+    cudaEventRecord(start);
     for (int run = 0; run < numberKernelRuns; run++)
     {
         // Generate n float on device with 
         // normal distribution mean = -1, stddev = sqrt(sigma2)
         CURAND_CALL(curandGenerateNormal(gen, noisedVector, 
                     noisedVectorSize, -1.0, sqrt(sigma2)));
-        CUDA_CALL(cudaDeviceSynchronize());
 
         // Kernel execution
         decodeAWGN<<<blocks, block_size>>>(
@@ -78,8 +89,14 @@ int main()
                 noisedVector,
                 MAX_ITERATIONS,
                 errorInfo);
-        CUDA_CALL(cudaDeviceSynchronize());
     }
+    cudaEventRecord(stop);
+
+    cudaEventSynchronize(stop);
+    float milliseconds = 0;
+    cudaEventElapsedTime(&milliseconds, start, stop);
+
+    std::cout << "Time: " << milliseconds << " ms" << std::endl;
     //cudaMemcpy(berOut, berOut_obj, sizeof(float)
     std::cout << "Results" << std::endl;
     std::cout << "BER " << errorInfo->bitErrors * 100.0 / cntBits  << "%"
@@ -89,12 +106,13 @@ int main()
 }
 
 void fillInput(
+        std::string filename,
         CodeInfo** codeInfo,
         Edge** edgesFromVariable,
         Edge** edgesFromCheck)
 {
     Matrix H;
-    std::ifstream matrixStream("matrix.txt");
+    std::ifstream matrixStream(filename);
     readMatrix(matrixStream, &H);
 
     MALLOC(codeInfo, sizeof(CodeInfo));
@@ -130,14 +148,14 @@ void fillInput(
             int id = cIt->second;
             Edge& edge = (*edgesFromVariable)[e[id]];
             edge.edgesConnectedToNode = connectedToNode;
-            std::cout << edge.index << " " << edge.vn << " " << edge.cn
-                << " " << edge.edgesConnectedToNode
-                << " " << edge.absoluteStartIndex
-                << " " << edge.relativeIndexFromNode << std::endl;
+            //std::cout << edge.index << " " << edge.vn << " " << edge.cn
+            //    << " " << edge.edgesConnectedToNode
+            //    << " " << edge.absoluteStartIndex
+            //    << " " << edge.relativeIndexFromNode << std::endl;
         }
     }
 
-    std::cout << "Table II" << std::endl;
+    //std::cout << "Table II" << std::endl;
     currentEdge = 0;
     for (int i = 0; i < H.k; i++)
     {
@@ -161,10 +179,10 @@ void fillInput(
             int id = jIdPair.second;
             Edge& edge = (*edgesFromCheck)[e[id]];
             edge.edgesConnectedToNode = connectedToNode;
-            std::cout << edge.index << " " << edge.vn << " " << edge.cn
-                << " " << edge.edgesConnectedToNode
-                << " " << edge.absoluteStartIndex
-                << " " << edge.relativeIndexFromNode << std::endl;
+            //std::cout << edge.index << " " << edge.vn << " " << edge.cn
+            //    << " " << edge.edgesConnectedToNode
+            //    << " " << edge.absoluteStartIndex
+            //    << " " << edge.relativeIndexFromNode << std::endl;
         }
     }
 }

@@ -6,10 +6,9 @@ __device__ void iterateToVariables(
         float* probQ,
         float* probR)
 {
-    int eSt = blockIdx.x * codeInfo->totalEdges;
-    for (int p = 0; p < codeInfo->totalEdges; p += blockDim.x)
+    for (int p = threadIdx.x; p < codeInfo->totalEdges; p += blockDim.x)
     {
-        Edge& e = edges[p + threadIdx.x];
+        Edge& e = edges[p];
         float r0 = 1;
         float r1 = 1;
         for (int id = 0; id < e.edgesConnectedToNode; id++)
@@ -17,11 +16,11 @@ __device__ void iterateToVariables(
             if (id == e.relativeIndexFromNode)
                 continue;
             int i = e.absoluteStartIndex + id;
-            r0 *= (1 - 2 * probQ[eSt + i]);
+            r0 *= (1 - 2 * probQ[i]);
         }
         r0 = (1 + r0) / 2;
         r1 = 1 - r0;
-        probR[eSt + p + threadIdx.x] = r1;
+        probR[p] = r1;
     }
 }
 
@@ -32,20 +31,18 @@ __device__ void iterateToChecks(
         float* probR,
         float* probQ)
 {
-    int vSt = blockIdx.x * codeInfo->varNodes;
-    int eSt = blockIdx.x * codeInfo->totalEdges;
-    for (int p = 0; p < codeInfo->totalEdges; p += blockDim.x)
+    for (int p = threadIdx.x; p < codeInfo->totalEdges; p += blockDim.x)
     {
-        Edge& e = edges[p + threadIdx.x];
-        float q1 = probP[vSt + e.vn];
+        Edge& e = edges[p];
+        float q1 = probP[e.vn];
         for (int id = 0; id < e.edgesConnectedToNode; id++)
         {
             if (id == e.relativeIndexFromNode)
                 continue;
             int i = e.absoluteStartIndex + id;
-            q1 *= probR[eSt + i];
+            q1 *= probR[i];
         }
-        probQ[eSt + p + threadIdx.x] = q1;
+        probQ[p] = q1;
     }
 }
 
@@ -55,17 +52,16 @@ __device__ void estimationCalc(
         float* probR,
         float* estimation)
 {
-    int eSt = blockIdx.x * codeInfo->totalEdges;
-    for (int p = 0; p < codeInfo->totalEdges; p += blockDim.x)
+    for (int p = threadIdx.x; p < codeInfo->totalEdges; p += blockDim.x)
     {
-        Edge& e = edges[p + threadIdx.x];
-        float q1 = probR[eSt + p + threadIdx.x];
+        Edge& e = edges[p];
+        float q1 = probR[p];
         float q0 = 1 - q1;
         for (int id = 0; id < e.edgesConnectedToNode; id++)
         {
             int i = e.absoluteStartIndex + id;
-            q1 *= probR[eSt + p + i];
-            q0 *= (1 - probR[eSt + p + i]);
+            q1 *= probR[i];
+            q0 *= (1 - probR[i]);
         }
         int index = e.vn;
         if (q1 > q0)
@@ -80,8 +76,8 @@ __global__ void decodeAWGN(
         Edge* edgesFromVariable,
         Edge* edgesFromCheck,
         float* probP,
-        float* probR,
         float* probQ,
+        float* probR,
         float sigma2,
         float* estimation,
         float* noisedVector,
@@ -89,11 +85,19 @@ __global__ void decodeAWGN(
         ErrorInfo* errorInfo)
 {
     int totalEdges = codeInfo->totalEdges;
-    // start for current decoder in data arrays indexed by edges
-    int eSt = blockIdx.x * codeInfo->totalEdges;
-    // start for current decoder in data arrays indexed by vars
-    int vSt = blockIdx.x * codeInfo->varNodes;
+    {
+        // start for current decoder in data arrays indexed by edges
+        int eSt = blockIdx.x * codeInfo->totalEdges;
+        probQ += eSt;
+        probR += eSt;
+        // start for current decoder in data arrays indexed by vars
+        int vSt = blockIdx.x * codeInfo->varNodes;
+        probP += vSt;
+        estimation += vSt;
+        noisedVector += vSt;
+    }
 
+    __shared__ int notZeros;
     for (int iter = 0; iter < MAX_ITERATIONS; iter++)
     {
         if (iter == 0) {
@@ -102,9 +106,9 @@ __global__ void decodeAWGN(
             {
                 // initProbCalcAWGN
                 int j = edgesFromVariable[p].vn;
-                float y = noisedVector[vSt + j];
-                probP[vSt + j] = 1.0 / (1.0 + exp(-2 * y / sigma2));
-                probQ[eSt + p] = probP[vSt + j];
+                float y = noisedVector[j];
+                probP[j] = 1.0 / (1.0 + exp(-2 * y / sigma2));
+                probQ[p] = probP[j];
             }
             __syncthreads();
         } else {
@@ -122,26 +126,24 @@ __global__ void decodeAWGN(
             estimationCalc(codeInfo, edgesFromVariable, probR, estimation);
         __syncthreads();
         // check that zero
-        __shared__ bool allZero;
-        allZero = true;
+        if (threadIdx.x == 0)
+            notZeros = 0;
         __syncthreads();
         for (int p = threadIdx.x; p < totalEdges; p += blockDim.x)
         {
-            int j = edgesFromVariable[p].vn;
-            if (estimation[vSt + j])
-                allZero = false;
+            Edge& e = edgesFromVariable[p];
+            if (e.relativeIndexFromNode == 0 && estimation[e.vn])
+                atomicAdd(&notZeros, 1);
         }
         __syncthreads();
-        if (allZero) {
+        if (notZeros == 0) {
             return;
         }
     }
-    // calculating error
+    // calculation error
     if (threadIdx.x == 0)
     { // to count only once
-        errorInfo->frameErrors++;
-        for (int i = 0; i < codeInfo->varNodes; i++)
-            if (estimation[vSt + i])
-                errorInfo->bitErrors++;
+        atomicAdd(&errorInfo->frameErrors, 1);
+        atomicAdd(&errorInfo->bitErrors, notZeros);
     }
 }

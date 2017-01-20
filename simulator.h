@@ -16,6 +16,6 @@ struct CodeInfo {
 };
 
 struct ErrorInfo {
-    long long bitErrors;
-    long long frameErrors;
+    unsigned long long bitErrors;
+    unsigned long long frameErrors;
 };
