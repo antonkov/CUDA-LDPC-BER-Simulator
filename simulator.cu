@@ -25,8 +25,8 @@ const int block_size = 512;
 const int decoders = 100;
 const int blocks = decoders;
 const float SNR = 2;
-const int MAX_ITERATIONS = 15;
-const int NUMBER_OF_CODEWORDS = 100 * 1000;
+const int MAX_ITERATIONS = 50;
+const int NUMBER_OF_CODEWORDS = 10 * 1000;
 
 void fillInput(std::string, CodeInfo**, Edge**, Edge**);
 SimulationReport simulate(std::string);
@@ -40,7 +40,7 @@ int main(int argc, char* argv[])
     }
 
     std::cout << "Results" << std::endl;
-    std::cout << "Filename    Time(ms)      BER    FER" << std::endl;
+    std::cout << "Filename Time(ms) BER% FER%" << std::endl;
 
     // Create time measure structures
     cudaEvent_t start, stop;
@@ -60,10 +60,10 @@ int main(int argc, char* argv[])
         float milliseconds = 0;
         cudaEventElapsedTime(&milliseconds, start, stop);
 
-        std::cout << filename << "   ";
-        std::cout << milliseconds << "    ";
-        std::cout << report.BER << "%" << "     ";
-        std::cout << report.FER << "%" << "     ";
+        std::cout << filename << " ";
+        std::cout << milliseconds << " ";
+        std::cout << report.BER << " ";
+        std::cout << report.FER << " ";
         std::cout << std::endl;
     }
 }
