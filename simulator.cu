@@ -26,8 +26,8 @@
 const int block_size = 512;
 const int decoders = 100;
 const int blocks = decoders;
-const float SNR = 0.2;
-const int MAX_ITERATIONS = 15;
+const float SNR = 4;
+const int MAX_ITERATIONS = 50;
 const int NUMBER_OF_CODEWORDS = 10 * 1000;
 
 void fillInput(std::string, CodeInfo**, Edge**, Edge**, Matrix &);
@@ -70,6 +70,14 @@ int main(int argc, char* argv[])
     }
 }
 
+void writeRandomCodeword(float * a, Matrix const & Gt)
+{
+    int id = 0;//rand() % Gt.cols.size();
+    std::fill(a, a + Gt.rows.size(), 0);
+    for (auto p : Gt.cols[id])
+        a[p.first] = 1;
+}
+
 SimulationReport simulate(std::string filename)
 {
     CodeInfo* codeInfo;
@@ -94,6 +102,11 @@ SimulationReport simulate(std::string filename)
     curandGenerator_t gen;
     CURAND_CALL(curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT));
     CURAND_CALL(curandSetPseudoRandomGeneratorSeed(gen, 19ULL));
+    srand(19);
+    float* codewords;
+    MALLOC(&codewords, noisedVectorSize * sizeof(float));
+    for (int i = 0; i < decoders; i++)
+        writeRandomCodeword(codewords + codeInfo->varNodes * i, Gt);
     float* estimation;
     MALLOC(&estimation, noisedVectorSize * sizeof(float));
     ErrorInfo* errorInfo;
@@ -105,9 +118,9 @@ SimulationReport simulate(std::string filename)
     for (int run = 0; run < numberKernelRuns; run++)
     {
         // Generate n float on device with 
-        // normal distribution mean = -1, stddev = sqrt(sigma2)
+        // normal distribution mean = 0, stddev = sqrt(sigma2)
         CURAND_CALL(curandGenerateNormal(gen, noisedVector, 
-                    noisedVectorSize, -1.0, sqrt(sigma2)));
+                    noisedVectorSize, 0.0, sqrt(sigma2)));
         // Kernel execution
         decodeAWGN<<<blocks, block_size>>>(
                 codeInfo,
@@ -118,6 +131,7 @@ SimulationReport simulate(std::string filename)
                 probR,
                 sigma2,
                 estimation,
+                codewords,
                 noisedVector,
                 MAX_ITERATIONS,
                 errorInfo);
@@ -129,6 +143,7 @@ SimulationReport simulate(std::string filename)
     // Freeing resources
     FREE(errorInfo);
     FREE(estimation);
+    FREE(codewords);
     FREE(noisedVector);
     FREE(probR);
     FREE(probQ);
@@ -154,7 +169,7 @@ void fillInput(
     std::ifstream matrixStream(filename);
     readMatrix(matrixStream, &H);
     Gt = codingMatrix(H);
-    //assert(isZero(multiply(H, Gt)));
+    assert(isZero(multiply(H, Gt)));
 
     MALLOC(codeInfo, sizeof(CodeInfo));
     (*codeInfo)->checkNodes = H.k;

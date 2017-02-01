@@ -88,6 +88,7 @@ __global__ void decodeAWGN(
         float* Z,
         float sigma2,
         float* estimation,
+        float* codewords,
         float* noisedVector,
         int MAX_ITERATIONS,
         ErrorInfo* errorInfo)
@@ -101,11 +102,15 @@ __global__ void decodeAWGN(
         int vSt = blockIdx.x * codeInfo->varNodes;
         y += vSt;
         estimation += vSt;
+        codewords += vSt;
         noisedVector += vSt;
     }
     // initial messages to check nodes
     for (int p = threadIdx.x; p < codeInfo->varNodes; p += blockDim.x)
-        y[p] = -2 * noisedVector[p] / sigma2;
+    {
+        float val = codewords[p] * 2 - 1 + noisedVector[p];
+        y[p] = -2 * val / sigma2;
+    }
     for (int p = threadIdx.x; p < codeInfo->totalEdges; p += blockDim.x)
         Z[p] = L[p] = 0;
     __syncthreads();
@@ -125,7 +130,7 @@ __global__ void decodeAWGN(
             notZeros = 0;
         __syncthreads();
         for (int p = threadIdx.x; p < codeInfo->varNodes; p += blockDim.x)
-            if (estimation[p])
+            if (estimation[p] != codewords[p])
                 atomicAdd(&notZeros, 1);
         __syncthreads();
         if (notZeros == 0) {
