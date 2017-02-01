@@ -1,5 +1,6 @@
 #include "simulator.h"
 #include "input.h"
+#include "algebra.h"
 #include "kernel.cu"
 
 #include <cuda.h>
@@ -9,6 +10,7 @@
 #include <cstdio>
 #include <fstream>
 #include <iostream>
+#include <cassert>
 
 #define CUDA_CALL(x) do { if((x) != cudaSuccess) { \
     printf("Error at %s:%d\n",__FILE__,__LINE__); \
@@ -24,11 +26,11 @@
 const int block_size = 512;
 const int decoders = 100;
 const int blocks = decoders;
-const float SNR = 2;
-const int MAX_ITERATIONS = 50;
+const float SNR = 0.2;
+const int MAX_ITERATIONS = 15;
 const int NUMBER_OF_CODEWORDS = 10 * 1000;
 
-void fillInput(std::string, CodeInfo**, Edge**, Edge**);
+void fillInput(std::string, CodeInfo**, Edge**, Edge**, Matrix &);
 SimulationReport simulate(std::string);
 
 int main(int argc, char* argv[])
@@ -73,7 +75,8 @@ SimulationReport simulate(std::string filename)
     CodeInfo* codeInfo;
     Edge* edgesFromVariable;
     Edge* edgesFromCheck;
-    fillInput(filename, &codeInfo, &edgesFromVariable, &edgesFromCheck);
+    Matrix Gt;
+    fillInput(filename, &codeInfo, &edgesFromVariable, &edgesFromCheck, Gt);
     float sigma2 = pow(10.0, -SNR / 10);
 
     float* probP;
@@ -144,11 +147,14 @@ void fillInput(
         std::string filename,
         CodeInfo** codeInfo,
         Edge** edgesFromVariable,
-        Edge** edgesFromCheck)
+        Edge** edgesFromCheck,
+        Matrix & Gt)
 {
     Matrix H;
     std::ifstream matrixStream(filename);
     readMatrix(matrixStream, &H);
+    Gt = codingMatrix(H);
+    //assert(isZero(multiply(H, Gt)));
 
     MALLOC(codeInfo, sizeof(CodeInfo));
     (*codeInfo)->checkNodes = H.k;

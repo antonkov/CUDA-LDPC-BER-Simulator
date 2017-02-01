@@ -1,4 +1,5 @@
 #include "algebra.h"
+#include <iostream>
 
 bool isZero(Matrix const & m)
 {
@@ -23,8 +24,11 @@ std::vector<vi> asDense(Matrix const & m)
 Matrix fromDense(std::vector<vi> const & v)
 {
     Matrix res;
+    res.totalCells = 0;
     res.k = v.size();
     res.n = v[0].size();
+    res.rows = cells_t(res.k);
+    res.cols = cells_t(res.n);
     for (int i = 0; i < res.k; i++)
     {
         for (int j = 0; j < res.n; j++)
@@ -56,11 +60,15 @@ std::vector<vi> transpose(std::vector<vi> const & m)
 std::vector<vi> gauss(std::vector<vi> const & inpA, std::vector<vi> & P)
 {
     std::vector<vi> A(inpA);
+    int n = A.size(), m = A[0].size();
+    P = std::vector<vi>(n, vi(n));
+    for (int i = 0; i < n; i++)
+        P[i][i] = 1;
     int ci = 0;
-    for (int j = 0; j < A[0].size(); j++)
+    for (int j = 0; j < m; j++)
     {
         int maxI = ci;
-        for (int i2 = ci; i2 < A.size(); i2++)
+        for (int i2 = ci; i2 < n; i2++)
         {
             if (A[i2][j] > A[maxI][j])
                 maxI = i2;
@@ -69,13 +77,13 @@ std::vector<vi> gauss(std::vector<vi> const & inpA, std::vector<vi> & P)
         {
             std::swap(A[maxI], A[ci]);
             std::swap(P[maxI], P[ci]);
-            for (int i2 = 0; i2 < A.size(); i2++)
+            for (int i2 = 0; i2 < n; i2++)
             {
                 if (i2 != ci && A[i2][j])
                 {
-                    for (int j2 = 0; j2 < A[0].size(); j2++)
+                    for (int j2 = 0; j2 < m; j2++)
                         A[i2][j2] ^= A[ci][j2];
-                    for (int j2 = 0; j2 < P[0].size(); j2++)
+                    for (int j2 = 0; j2 < n; j2++)
                         P[i2][j2] ^= P[ci][j2];
                 }
             }
@@ -87,17 +95,29 @@ std::vector<vi> gauss(std::vector<vi> const & inpA, std::vector<vi> & P)
     return A;
 }
 
+void print(std::vector<vi> const & v)
+{
+    std::cout << "-----matrix-------" << std::endl;
+    for (auto & vv : v)
+    {
+        for (int x : vv)
+            std::cout << x << " ";
+        std::cout << std::endl;
+    }
+    std::cout << "------------------" << std::endl;
+}
+
 Matrix codingMatrix(Matrix const & H)
 {
     std::vector<vi> Ht = transpose(asDense(H));
     int n = Ht.size(), k = Ht[0].size();
-    std::vector<vi> Qt(n, vi(n));
-    std::vector<vi> Q(transpose(Qt));
+    std::vector<vi> Qt;
     std::vector<vi> H2t = gauss(Ht, Qt); // H2t == Qt . Ht --> H . Q == H2
-    std::vector<vi> P(k, vi(k));
+    std::vector<vi> P;
     std::vector<vi> J = gauss(transpose(H2t), P); // J == P . H2 --> J == P . H . Q
     // H . Gt == 0 --> invP . J . invQ . Gt == 0 --> J . invQ . Gt == 0 
     // Y == invQ . Gt == vstack[0 I_n-k] --> Q . Y == Gt
+    std::vector<vi> Q(transpose(Qt));
     std::vector<vi> Gt(n, vi(n - k));
     for (int i = 0; i < n; i++)
     {
@@ -115,8 +135,11 @@ Matrix multiply(Matrix const & a, Matrix const & b)
         exit(1);
 
     Matrix res;
+    res.totalCells = 0;
     res.k = a.k;
     res.n = b.n;
+    res.rows = cells_t(res.k);
+    res.cols = cells_t(res.n);
     for (int i = 0; i < res.k; i++)
     {
         for (int j = 0; j < res.n; j++)
