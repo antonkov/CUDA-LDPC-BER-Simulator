@@ -29,7 +29,7 @@ const int decoders = 100;
 const int blocks = decoders;
 const float SNR = 4;
 const int MAX_ITERATIONS = 50;
-const int NUMBER_OF_CODEWORDS = 10 * 1000;
+const int NUMBER_OF_CODEWORDS = 10 * 10;
 
 void fillInput(std::string, CodeInfo**, Edge**, Edge**, Matrix &);
 SimulationReport simulate(std::string);
@@ -136,6 +136,7 @@ SimulationReport simulate(std::string filename)
                 noisedVector,
                 MAX_ITERATIONS,
                 errorInfo);*/
+        CUDA_CALL(cudaDeviceSynchronize());
         decodeAWGN_CPU(
                 codeInfo,
                 edgesFromVariable,

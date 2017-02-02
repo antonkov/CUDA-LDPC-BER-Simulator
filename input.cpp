@@ -26,7 +26,7 @@ void readMatrix(std::istream& in, Matrix* mPtr)
             for (int j = 0; j < m.n; j++)
             {
                 in >> h[i][j];
-                if (h[i][j])
+                if (h[i][j] == 1)
                 {
                     int id = m.totalCells;
                     m.rows[i].push_back(std::make_pair(j, id));
