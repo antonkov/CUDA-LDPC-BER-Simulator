@@ -116,14 +116,17 @@ Matrix codingMatrix(Matrix const & H)
     std::vector<vi> P;
     std::vector<vi> J = gauss(transpose(H2t), P); // J == P . H2 --> J == P . H . Q
     // H . Gt == 0 --> invP . J . invQ . Gt == 0 --> J . invQ . Gt == 0 
-    // Y == invQ . Gt == vstack[0 I_n-k] --> Q . Y == Gt
+    int rank = 0;
+    for (int i = 0; i < k; i++)
+        rank += J[i][i];
+    // Y == invQ . Gt == vstack[0 I_n-rank] --> Q . Y == Gt
     std::vector<vi> Q(transpose(Qt));
-    std::vector<vi> Gt(n, vi(n - k));
+    std::vector<vi> Gt(n, vi(n - rank));
     for (int i = 0; i < n; i++)
     {
-        for (int j = k; j < n; j++)
+        for (int j = rank; j < n; j++)
         {
-            Gt[i][j - k] = Q[i][j];
+            Gt[i][j - rank] = Q[i][j];
         }
     }
     return fromDense(Gt);

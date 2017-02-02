@@ -72,7 +72,7 @@ int main(int argc, char* argv[])
 
 void writeRandomCodeword(float * a, Matrix const & Gt)
 {
-    int id = 0;//rand() % Gt.cols.size();
+    int id = rand() % Gt.cols.size();
     std::fill(a, a + Gt.rows.size(), 0);
     for (auto p : Gt.cols[id])
         a[p.first] = 1;
@@ -85,7 +85,7 @@ SimulationReport simulate(std::string filename)
     Edge* edgesFromCheck;
     Matrix Gt;
     fillInput(filename, &codeInfo, &edgesFromVariable, &edgesFromCheck, Gt);
-    float sigma2 = pow(10.0, -SNR / 10);
+    float sigma2 = pow(10.0, -SNR / 10.0);
 
     float* probP;
     float* probQ;

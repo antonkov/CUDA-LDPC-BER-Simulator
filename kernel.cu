@@ -2,7 +2,7 @@
 
 __device__ float logtanh(float x)
 {
-    float t = exp(x);
+    float t = exp(abs(x)); // should be just exp(x) if in pseudocode and abs in matlab
     float y = log((t + 1.0) / (t - 1.0));
     return y;
 }
