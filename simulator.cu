@@ -2,6 +2,7 @@
 #include "input.h"
 #include "algebra.h"
 #include "kernel.cu"
+#include "kernelCPU.h"
 
 #include <cuda.h>
 #include <curand.h>
@@ -122,7 +123,7 @@ SimulationReport simulate(std::string filename)
         CURAND_CALL(curandGenerateNormal(gen, noisedVector, 
                     noisedVectorSize, 0.0, sqrt(sigma2)));
         // Kernel execution
-        decodeAWGN<<<blocks, block_size>>>(
+        /*decodeAWGN<<<blocks, block_size>>>(
                 codeInfo,
                 edgesFromVariable,
                 edgesFromCheck,
@@ -134,7 +135,22 @@ SimulationReport simulate(std::string filename)
                 codewords,
                 noisedVector,
                 MAX_ITERATIONS,
-                errorInfo);
+                errorInfo);*/
+        decodeAWGN_CPU(
+                codeInfo,
+                edgesFromVariable,
+                edgesFromCheck,
+                probP,
+                probQ,
+                probR,
+                sigma2,
+                estimation,
+                codewords,
+                noisedVector,
+                MAX_ITERATIONS,
+                errorInfo,
+                blocks,
+                block_size);
     }
     CUDA_CALL(cudaDeviceSynchronize());
     float BER = errorInfo->bitErrors * 100.0 / cntBits;
