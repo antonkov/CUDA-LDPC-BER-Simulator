@@ -96,7 +96,7 @@ __device__ void estimationCalc(
             estimation[index] = 0;
     }
     if (threadIdx.x == 0)
-        notZeros = 0;
+        *notZeros = 0;
     __syncthreads();
     calcZeros(codeInfo, notZeros, estimation, codewords);
 }

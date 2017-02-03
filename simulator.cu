@@ -29,7 +29,8 @@ const int decoders = 100;
 const int blocks = decoders;
 const float SNR = 2;
 const int MAX_ITERATIONS = 50;
-const int NUMBER_OF_CODEWORDS = 10 * 100;
+const int NUMBER_OF_CODEWORDS = 10 * 1000;
+const bool callGPU = true;
 
 void fillInput(std::string, CodeInfo**, Edge**, Edge**, Matrix &);
 SimulationReport simulate(std::string);
@@ -125,7 +126,6 @@ SimulationReport simulate(std::string filename)
         CURAND_CALL(curandGenerateNormal(gen, noisedVector, 
                     noisedVectorSize, 0.0, sqrt(sigma2)));
         // Kernel execution
-        bool callGPU = false;
         if (callGPU)
         {
         decodeAWGN<<<blocks, block_size>>>(
