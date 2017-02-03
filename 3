@@ -90,64 +90,6 @@ namespace
     }
 }
 
-void solveTest(
-        CodeInfo* codeInfo,
-        Edge* edgesFromVariable,
-        Edge* edgesFromCheck,
-        float* y,
-        float* L,
-        float* Z,
-        float sigma2,
-        float* estimation,
-        float* codewords,
-        float* noisedVector,
-        int MAX_ITERATIONS,
-        ErrorInfo* errorInfo)
-{
-    // initial messages to check nodes
-    for (int p = 0; p < codeInfo->varNodes; p++)
-    {
-        float val = codewords[p] * 2 - 1 + noisedVector[p];
-        y[p] = -2 * val / sigma2; // CAN OVERFLOW exponent here!!!!
-    }
-    for (int p = 0; p < codeInfo->totalEdges; p++)
-        Z[p] = L[p] = 0;
-    //__syncthreads();
-
-    /*__shared__*/ int notZeros = 0;
-    // check if already codeword
-    estimationCalc(codeInfo, edgesFromVariable, y, Z, estimation);
-    for (int p = 0; p < codeInfo->varNodes; p++)
-        if (estimation[p] != codewords[p])
-            notZeros += 1;
-    if (notZeros == 0)
-        return;
-    // do iterations
-    for (int iter = 0; iter < MAX_ITERATIONS; iter++)
-    {
-        iterateToL(codeInfo, edgesFromVariable, y, Z, L);
-        //__syncthreads();
-        iterateToZ(codeInfo, edgesFromCheck, L, Z);
-        //__syncthreads();
-        // calculate the estimation
-        estimationCalc(codeInfo, edgesFromVariable, y, Z, estimation);
-        //__syncthreads();
-        // check that zero
-        notZeros = 0;
-        //__syncthreads();
-        for (int p = 0; p < codeInfo->varNodes; p++)
-            if (estimation[p] != codewords[p])
-                notZeros += 1;
-        //__syncthreads();
-        if (notZeros == 0) {
-            return;
-        }
-    }
-    // calculation error
-    errorInfo->frameErrors++;
-    errorInfo->bitErrors += notZeros;
-}
-
 void decodeAWGN_CPU(
         CodeInfo* codeInfo,
         Edge* edgesFromVariable,
@@ -176,15 +118,48 @@ void decodeAWGN_CPU(
         float* estimation = estimationInp + vSt;
         float* codewords = codewordsInp + vSt;
         float* noisedVector = noisedVectorInp + vSt;
-        solveTest(
-                codeInfo,
-                edgesFromVariable,
-                edgesFromCheck,
-                y, L, Z, sigma2,
-                estimation,
-                codewords,
-                noisedVector,
-                MAX_ITERATIONS,
-                errorInfo);
+
+        // initial messages to check nodes
+        for (int p = 0; p < codeInfo->varNodes; p++)
+        {
+            float val = codewords[p] * 2 - 1 + noisedVector[p];
+            y[p] = -2 * val / sigma2; // CAN OVERFLOW exponent here!!!!
+        }
+        for (int p = 0; p < codeInfo->totalEdges; p++)
+            Z[p] = L[p] = 0;
+        //__syncthreads();
+
+        /*__shared__*/ int notZeros = 0;
+        // check if already codeword
+        estimationCalc(codeInfo, edgesFromVariable, y, Z, estimation);
+        for (int p = 0; p < codeInfo->varNodes; p++)
+            if (estimation[p] != codewords[p])
+                notZeros += 1;
+        if (notZeros == 0)
+            return;
+        // do iterations
+        for (int iter = 0; iter < MAX_ITERATIONS; iter++)
+        {
+            iterateToL(codeInfo, edgesFromVariable, y, Z, L);
+            //__syncthreads();
+            iterateToZ(codeInfo, edgesFromCheck, L, Z);
+            //__syncthreads();
+            // calculate the estimation
+            estimationCalc(codeInfo, edgesFromVariable, y, Z, estimation);
+            //__syncthreads();
+            // check that zero
+            notZeros = 0;
+            //__syncthreads();
+            for (int p = 0; p < codeInfo->varNodes; p++)
+                if (estimation[p] != codewords[p])
+                    notZeros += 1;
+            //__syncthreads();
+            if (notZeros == 0) {
+                return;
+            }
+        }
+        // calculation error
+        errorInfo->frameErrors++;
+        errorInfo->bitErrors += notZeros;
     }
 }

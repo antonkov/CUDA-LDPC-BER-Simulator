@@ -28,9 +28,9 @@ const int block_size = 512;
 const int decoders = 100;
 const int blocks = decoders;
 const float SNR = 4;
-const int MAX_ITERATIONS = 50;
+const int MAX_ITERATIONS = 15;
 const int NUMBER_OF_CODEWORDS = 10 * 1000;
-const bool callGPU = true;
+const bool callGPU = false;
 
 void fillInput(std::string, CodeInfo**, Edge**, Edge**, Matrix &);
 SimulationReport simulate(std::string);
