@@ -26,9 +26,9 @@
 
 const int block_size = 512;
 int decoders = 100;
-const float SNR = 4;
-const int MAX_ITERATIONS = 1;
-const int NUMBER_OF_CODEWORDS = 1;
+const float SNR = 2;
+const int MAX_ITERATIONS = 50;
+const int NUMBER_OF_CODEWORDS = 10 * 1000;
 
 void fillInput(std::string, CodeInfo**, Edge**, Edge**, Matrix &);
 SimulationReport simulate(std::string);
@@ -127,6 +127,7 @@ SimulationReport simulate(std::string filename)
     float cntBits = cntFrames * codeInfo->varNodes;
     for (int run = 0; run < numberKernelRuns; run++)
     {
+        std::cout << "run " << run << std::endl;
         // Generate n float on device with 
         // normal distribution mean = 0, stddev = sqrt(sigma2)
         CURAND_CALL(curandGenerateNormal(gen, noisedVector, 

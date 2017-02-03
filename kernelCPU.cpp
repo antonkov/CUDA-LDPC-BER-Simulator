@@ -34,7 +34,7 @@ namespace
                 float alpha = (L[eAdj.index] < 0) ? -1 : 1;
                 alphaProd *= alpha;
                 fSum += logtanh(fabs(L[eAdj.index]));
-                std::cout << "arg " << fabs(L[eAdj.index]) << " fSum=" << fSum << std::endl;
+        //        std::cout << "arg " << fabs(L[eAdj.index]) << " fSum=" << fSum << std::endl;
             }
             float val = alphaProd * logtanh(fSum);
             val = std::min(val, 19.07f);
@@ -143,11 +143,11 @@ void decodeAWGN_CPU(
         for (int iter = 0; iter < MAX_ITERATIONS; iter++)
         {
             iterateToL(codeInfo, edgesFromVariable, y, Z, L);
-            for (int i = 0; i < codeInfo->totalEdges; i++)
+            /*for (int i = 0; i < codeInfo->totalEdges; i++)
             {
                 Edge& e = edgesFromCheck[i];
                 std::cout << "y " << y[e.vn] << " " << L[e.index] << std::endl;
-            }
+            }*/
             //__syncthreads();
             iterateToZ(codeInfo, edgesFromCheck, L, Z);
             //__syncthreads();
@@ -161,13 +161,14 @@ void decodeAWGN_CPU(
                 if (estimation[p] != codewords[p])
                     notZeros += 1;
             //__syncthreads();
-            std::cout << iter << " : " << notZeros << std::endl;
+            /*std::cout << iter << " : " << notZeros << std::endl;
             for (int p = 0; p < codeInfo->varNodes; p++)
                 std::cout << estimation[p];
             std::cout << std::endl;
             for (int p = 0; p < codeInfo->varNodes; p++)
                 std::cout << codewords[p];
             std::cout << std::endl;
+            */
             if (notZeros == 0) {
                 return;
             }
