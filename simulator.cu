@@ -27,7 +27,7 @@
 const int block_size = 512;
 const int decoders = 100;
 const int blocks = decoders;
-const float SNR = 2;
+const float SNR = 4;
 const int MAX_ITERATIONS = 50;
 const int NUMBER_OF_CODEWORDS = 10 * 1000;
 const bool callGPU = true;
@@ -74,10 +74,11 @@ int main(int argc, char* argv[])
 
 void writeRandomCodeword(float * a, Matrix const & Gt)
 {
-    int id = rand() % Gt.cols.size();
     std::fill(a, a + Gt.rows.size(), 0);
-    for (auto p : Gt.cols[id])
-        a[p.first] = 1;
+    for (int j = 0; j < Gt.cols.size(); j++)
+        if (rand() % 2) // take this codeword
+            for (auto p : Gt.cols[j])
+                a[p.first]  = 1 - a[p.first];
 }
 
 SimulationReport simulate(std::string filename)

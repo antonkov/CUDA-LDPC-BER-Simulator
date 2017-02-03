@@ -8,7 +8,7 @@ namespace
 {
     float logtanh(float x)
     {
-        float t = exp(fabs(x)); // should be just exp(x) if in pseudocode and fabs in matlab
+        float t = exp(x); // should be just exp(x) if in pseudocode and fabs in matlab
         float y = log((t + 1.0) / (t - 1.0));
         return y;
     }
@@ -34,7 +34,7 @@ namespace
                 alphaProd *= alpha;
                 fSum += logtanh(fabs(L[eAdj.index]));
             }
-            float val = alphaProd * logtanh(fSum);
+            float val = alphaProd * logtanh(fSum); // fSum is positive
             val = std::min(val, 19.07f);
             val = std::max(val, -19.07f);
             Z[e.index] = val;
@@ -131,6 +131,7 @@ void decodeAWGN_CPU(
 
         /*__shared__*/ int notZeros = 0;
         // check if already codeword
+        estimationCalc(codeInfo, edgesFromVariable, y, Z, estimation);
         for (int p = 0; p < codeInfo->varNodes; p++)
             if (estimation[p] != codewords[p])
                 notZeros += 1;
