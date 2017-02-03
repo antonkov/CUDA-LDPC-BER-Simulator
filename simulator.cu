@@ -26,7 +26,7 @@
 
 const int block_size = 512;
 int decoders = 100;
-const float SNR = 25;
+const float SNR = 4;
 const int MAX_ITERATIONS = 1;
 const int NUMBER_OF_CODEWORDS = 1;
 
