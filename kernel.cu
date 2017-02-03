@@ -2,7 +2,8 @@
 
 __device__ float logtanh(float x)
 {
-    float t = exp(abs(x)); // should be just exp(x) if in pseudocode and abs in matlab
+    // if x is positive then y is positive
+    float t = exp(x); // should be just exp(x) if in pseudocode and fabs in matlab
     float y = log((t + 1.0) / (t - 1.0));
     return y;
 }
@@ -23,14 +24,17 @@ __device__ void iterateToZ(
             if (id == e.relativeIndexFromNode)
                 continue;
             int i = e.absoluteStartIndex + id;
-            float alpha = (L[i] < 0) ? -1 : 1;
+            Edge& eAdj = edges[i];
+            float alpha = (L[eAdj.index] < 0) ? -1 : 1;
             alphaProd *= alpha;
-            fSum += logtanh(abs(L[i]));
+            fSum += logtanh(fabs(L[eAdj.index]));
         }
-        Z[p] = alphaProd * logtanh(fSum);
-        Z[p] = min(Z[p], 19.07);
-        Z[p] = max(Z[p], -19.07);
+        float val = alphaProd * logtanh(fSum); // fSum is positive
+        val = min(val, 19.07);
+        val = max(val, -19.07);
+        Z[e.index] = val;
     }
+    __syncthreads();
 }
 
 __device__ void iterateToL(
@@ -49,10 +53,21 @@ __device__ void iterateToL(
             if (id == e.relativeIndexFromNode)
                 continue;
             int i = e.absoluteStartIndex + id;
-            val += Z[i];
+            Edge& eAdj = edges[i];
+            val += Z[eAdj.index];
         }
-        L[p] = val;
+        L[e.index] = val;
     }
+    __syncthreads();
+}
+
+__device__ void calcZeros(CodeInfo* codeInfo, int* notZeros, float* estimation, float* codewords)
+{
+    // check that zero
+    for (int p = threadIdx.x; p < codeInfo->varNodes; p += blockDim.x)
+        if (estimation[p] != codewords[p])
+            atomicAdd(notZeros, 1);
+    __syncthreads();
 }
 
 __device__ void estimationCalc(
@@ -60,7 +75,9 @@ __device__ void estimationCalc(
         Edge* edges,
         float* y,
         float* Z,
-        float* estimation)
+        float* estimation,
+        float* codewords,
+        int* notZeros)
 {
     for (int p = threadIdx.x; p < codeInfo->totalEdges; p += blockDim.x)
     {
@@ -69,7 +86,8 @@ __device__ void estimationCalc(
         for (int id = 0; id < e.edgesConnectedToNode; id++)
         {
             int i = e.absoluteStartIndex + id;
-            sumZ += Z[i];
+            Edge& eAdj = edges[i];
+            sumZ += Z[eAdj.index];
         }
         int index = e.vn;
         if (sumZ < 0)
@@ -77,6 +95,10 @@ __device__ void estimationCalc(
         else
             estimation[index] = 0;
     }
+    if (threadIdx.x == 0)
+        notZeros = 0;
+    __syncthreads();
+    calcZeros(codeInfo, notZeros, estimation, codewords);
 }
 
 __global__ void decodeAWGN(
@@ -116,26 +138,16 @@ __global__ void decodeAWGN(
     __syncthreads();
 
     __shared__ int notZeros;
+    estimationCalc(codeInfo, edgesFromVariable, y, Z, estimation, codewords, &notZeros);
+    if (notZeros == 0)
+        return;
     for (int iter = 0; iter < MAX_ITERATIONS; iter++)
     {
         iterateToL(codeInfo, edgesFromVariable, y, Z, L);
-        __syncthreads();
         iterateToZ(codeInfo, edgesFromCheck, L, Z);
-        __syncthreads();
-        // calculate the estimation
-        estimationCalc(codeInfo, edgesFromVariable, y, Z, estimation);
-        __syncthreads();
-        // check that zero
-        if (threadIdx.x == 0)
-            notZeros = 0;
-        __syncthreads();
-        for (int p = threadIdx.x; p < codeInfo->varNodes; p += blockDim.x)
-            if (estimation[p] != codewords[p])
-                atomicAdd(&notZeros, 1);
-        __syncthreads();
-        if (notZeros == 0) {
+        estimationCalc(codeInfo, edgesFromVariable, y, Z, estimation, codewords, &notZeros);
+        if (notZeros == 0)
             return;
-        }
     }
     // calculation error
     if (threadIdx.x == 0)

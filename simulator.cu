@@ -27,9 +27,9 @@
 const int block_size = 512;
 const int decoders = 100;
 const int blocks = decoders;
-const float SNR = 4;
+const float SNR = 2;
 const int MAX_ITERATIONS = 50;
-const int NUMBER_OF_CODEWORDS = 10 * 10;
+const int NUMBER_OF_CODEWORDS = 10 * 100;
 
 void fillInput(std::string, CodeInfo**, Edge**, Edge**, Matrix &);
 SimulationReport simulate(std::string);
@@ -125,7 +125,10 @@ SimulationReport simulate(std::string filename)
         CURAND_CALL(curandGenerateNormal(gen, noisedVector, 
                     noisedVectorSize, 0.0, sqrt(sigma2)));
         // Kernel execution
-        /*decodeAWGN<<<blocks, block_size>>>(
+        bool callGPU = false;
+        if (callGPU)
+        {
+        decodeAWGN<<<blocks, block_size>>>(
                 codeInfo,
                 edgesFromVariable,
                 edgesFromCheck,
@@ -137,23 +140,11 @@ SimulationReport simulate(std::string filename)
                 codewords,
                 noisedVector,
                 MAX_ITERATIONS,
-                errorInfo);*/
-        CUDA_CALL(cudaDeviceSynchronize());
-        decodeAWGN_CPU(
-                codeInfo,
-                edgesFromVariable,
-                edgesFromCheck,
-                probP,
-                probQ,
-                probR,
-                sigma2,
-                estimation,
-                codewords,
-                noisedVector,
-                MAX_ITERATIONS,
-                errorInfo,
-                blocks,
-                block_size);
+                errorInfo);
+        } else {
+            CUDA_CALL(cudaDeviceSynchronize());
+            decodeAWGN_CPU(codeInfo,edgesFromVariable,edgesFromCheck,probP,probQ,probR,sigma2,estimation,codewords,noisedVector,MAX_ITERATIONS,errorInfo,blocks,block_size);
+        }
     }
     CUDA_CALL(cudaDeviceSynchronize());
     float BER = errorInfo->bitErrors * 100.0 / cntBits;
