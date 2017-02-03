@@ -8,7 +8,7 @@ namespace
 {
     float logtanh(float x)
     {
-        float t = exp(abs(x)); // should be just exp(x) if in pseudocode and abs in matlab
+        float t = exp(fabs(x)); // should be just exp(x) if in pseudocode and fabs in matlab
         float y = log((t + 1.0) / (t - 1.0));
         return y;
     }
@@ -29,13 +29,15 @@ namespace
                 if (id == e.relativeIndexFromNode)
                     continue;
                 int i = e.absoluteStartIndex + id;
-                float alpha = (L[i] < 0) ? -1 : 1;
+                Edge& eAdj = edges[i];
+                float alpha = (L[eAdj.index] < 0) ? -1 : 1;
                 alphaProd *= alpha;
-                fSum += logtanh(abs(L[i]));
+                fSum += logtanh(fabs(L[eAdj.index]));
             }
-            Z[p] = alphaProd * logtanh(fSum);
-            Z[p] = std::min(Z[p], 19.07f);
-            Z[p] = std::max(Z[p], -19.07f);
+            float val = alphaProd * logtanh(fSum);
+            val = std::min(val, 19.07f);
+            val = std::max(val, -19.07f);
+            Z[e.index] = val;
         }
     }
 
@@ -55,9 +57,10 @@ namespace
                 if (id == e.relativeIndexFromNode)
                     continue;
                 int i = e.absoluteStartIndex + id;
-                val += Z[i];
+                Edge& eAdj = edges[i];
+                val += Z[eAdj.index];
             }
-            L[p] = val;
+            L[e.index] = val;
         }
     }
 
@@ -75,7 +78,8 @@ namespace
             for (int id = 0; id < e.edgesConnectedToNode; id++)
             {
                 int i = e.absoluteStartIndex + id;
-                sumZ += Z[i];
+                Edge& eAdj = edges[i];
+                sumZ += Z[eAdj.index];
             }
             int index = e.vn;
             if (sumZ < 0)
@@ -119,13 +123,20 @@ void decodeAWGN_CPU(
         for (int p = 0; p < codeInfo->varNodes; p++)
         {
             float val = codewords[p] * 2 - 1 + noisedVector[p];
-            y[p] = -2 * val / sigma2;
+            y[p] = -2 * val / sigma2; // CAN OVERFLOW exponent here!!!!
         }
         for (int p = 0; p < codeInfo->totalEdges; p++)
             Z[p] = L[p] = 0;
         //__syncthreads();
 
-        /*__shared__*/ int notZeros;
+        /*__shared__*/ int notZeros = 0;
+        // check if already codeword
+        for (int p = 0; p < codeInfo->varNodes; p++)
+            if (estimation[p] != codewords[p])
+                notZeros += 1;
+        if (notZeros == 0)
+            return;
+        // do iterations
         for (int iter = 0; iter < MAX_ITERATIONS; iter++)
         {
             iterateToL(codeInfo, edgesFromVariable, y, Z, L);
