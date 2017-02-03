@@ -3,6 +3,7 @@
 #include <math.h>
 #include <algorithm>
 #include <stdlib.h>
+#include <iostream>
 
 namespace
 {
@@ -29,13 +30,15 @@ namespace
                 if (id == e.relativeIndexFromNode)
                     continue;
                 int i = e.absoluteStartIndex + id;
-                float alpha = (L[i] < 0) ? -1 : 1;
+                Edge& eAdj = edges[i];
+                float alpha = (L[eAdj.index] < 0) ? -1 : 1;
                 alphaProd *= alpha;
-                fSum += logtanh(abs(L[i]));
+                fSum += logtanh(abs(L[eAdj.index]));
             }
-            Z[p] = alphaProd * logtanh(fSum);
-            Z[p] = std::min(Z[p], 19.07f);
-            Z[p] = std::max(Z[p], -19.07f);
+            float val = alphaProd * logtanh(fSum);
+            val = std::min(val, 19.07f);
+            val = std::max(val, -19.07f);
+            Z[e.index] = val;
         }
     }
 
@@ -55,9 +58,10 @@ namespace
                 if (id == e.relativeIndexFromNode)
                     continue;
                 int i = e.absoluteStartIndex + id;
-                val += Z[i];
+                Edge& eAdj = edges[i];
+                val += Z[eAdj.index];
             }
-            L[p] = val;
+            L[e.index] = val;
         }
     }
 
@@ -75,7 +79,8 @@ namespace
             for (int id = 0; id < e.edgesConnectedToNode; id++)
             {
                 int i = e.absoluteStartIndex + id;
-                sumZ += Z[i];
+                Edge& eAdj = edges[i];
+                sumZ += Z[eAdj.index];
             }
             int index = e.vn;
             if (sumZ < 0)
@@ -125,10 +130,23 @@ void decodeAWGN_CPU(
             Z[p] = L[p] = 0;
         //__syncthreads();
 
-        /*__shared__*/ int notZeros;
+        estimationCalc(codeInfo, edgesFromVariable, y, Z, estimation);
+        /*__shared__*/ int notZeros = 0;
+        for (int p = 0; p < codeInfo->varNodes; p++)
+                if (estimation[p] != codewords[p])
+                    notZeros += 1;
+        std::cout << "Before : " << notZeros << std::endl;
+        for (int p = 0; p < codeInfo->varNodes; p++)
+            std::cout << estimation[p];
+        std::cout << std::endl;
         for (int iter = 0; iter < MAX_ITERATIONS; iter++)
         {
             iterateToL(codeInfo, edgesFromVariable, y, Z, L);
+            for (int i = 0; i < codeInfo->totalEdges; i++)
+            {
+                Edge& e = edgesFromCheck[i];
+                std::cout << "y " << y[e.vn] << " " << L[e.index] << std::endl;
+            }
             //__syncthreads();
             iterateToZ(codeInfo, edgesFromCheck, L, Z);
             //__syncthreads();
@@ -142,6 +160,13 @@ void decodeAWGN_CPU(
                 if (estimation[p] != codewords[p])
                     notZeros += 1;
             //__syncthreads();
+            std::cout << iter << " : " << notZeros << std::endl;
+            for (int p = 0; p < codeInfo->varNodes; p++)
+                std::cout << estimation[p];
+            std::cout << std::endl;
+            for (int p = 0; p < codeInfo->varNodes; p++)
+                std::cout << codewords[p];
+            std::cout << std::endl;
             if (notZeros == 0) {
                 return;
             }

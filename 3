@@ -25,10 +25,11 @@
 #define FREE(x) CUDA_CALL(cudaFree(x))
 
 const int block_size = 512;
-int decoders = 100;
-const float SNR = 25;
-const int MAX_ITERATIONS = 1;
-const int NUMBER_OF_CODEWORDS = 1;
+const int decoders = 100;
+const int blocks = decoders;
+const float SNR = 4;
+const int MAX_ITERATIONS = 50;
+const int NUMBER_OF_CODEWORDS = 2;
 
 void fillInput(std::string, CodeInfo**, Edge**, Edge**, Matrix &);
 SimulationReport simulate(std::string);
@@ -86,7 +87,6 @@ SimulationReport simulate(std::string filename)
     Matrix Gt;
     fillInput(filename, &codeInfo, &edgesFromVariable, &edgesFromCheck, Gt);
     float sigma2 = pow(10.0, -SNR / 10.0);
-    std::cout << "sigma2 " << sigma2 << std::endl;
 
     float* probP;
     float* probQ;
@@ -131,11 +131,8 @@ SimulationReport simulate(std::string filename)
         // normal distribution mean = 0, stddev = sqrt(sigma2)
         CURAND_CALL(curandGenerateNormal(gen, noisedVector, 
                     noisedVectorSize, 0.0, sqrt(sigma2)));
-        CUDA_CALL(cudaDeviceSynchronize());
-        /*for (int i = 0; i < noisedVectorSize; i++)
-            std::cout << noisedVector[i] << std::endl;*/
         // Kernel execution
-        /*decodeAWGN<<<decoders, block_size>>>(
+        /*decodeAWGN<<<blocks, block_size>>>(
                 codeInfo,
                 edgesFromVariable,
                 edgesFromCheck,
@@ -148,6 +145,7 @@ SimulationReport simulate(std::string filename)
                 noisedVector,
                 MAX_ITERATIONS,
                 errorInfo);*/
+        CUDA_CALL(cudaDeviceSynchronize());
         decodeAWGN_CPU(
                 codeInfo,
                 edgesFromVariable,
@@ -161,7 +159,7 @@ SimulationReport simulate(std::string filename)
                 noisedVector,
                 MAX_ITERATIONS,
                 errorInfo,
-                decoders,
+                blocks,
                 block_size);
     }
     CUDA_CALL(cudaDeviceSynchronize());
@@ -208,25 +206,29 @@ void fillInput(
     MALLOC(edgesFromCheck, (*codeInfo)->totalEdges * sizeof(Edge));
 
     int currentEdge = 0;
+    std::vector<int> e(H.k * H.n);
     for (int j = 0; j < H.n; j++)
     {
         int connectedToNode = 0;
         int absoluteStartIndex = currentEdge;
-        for (auto iIdPair : H.cols[j])
+        for (auto cIt = H.cols[j].rbegin(); cIt != H.cols[j].rend(); cIt++)
         {
-            int i = iIdPair.first;
-            int id = iIdPair.second;
-            Edge& edge = (*edgesFromVariable)[currentEdge++];
-            edge.index = id;
+            int i = cIt->first;
+            int id = cIt->second;
+            e[id] = currentEdge++;
+            Edge& edge = (*edgesFromVariable)[e[id]];
+            edge.index = e[id];
             edge.vn = j;
             edge.cn = i;
             edge.absoluteStartIndex = absoluteStartIndex;
             edge.relativeIndexFromNode = connectedToNode;
             connectedToNode++;
         }
-        for (int id = 0; id < connectedToNode; id++)
+        for (auto cIt = H.cols[j].rbegin(); cIt != H.cols[j].rend(); cIt++)
         {
-            Edge& edge = (*edgesFromVariable)[absoluteStartIndex + id];
+            int i = cIt->first;
+            int id = cIt->second;
+            Edge& edge = (*edgesFromVariable)[e[id]];
             edge.edgesConnectedToNode = connectedToNode;
             //std::cout << edge.index << " " << edge.vn << " " << edge.cn
             //    << " " << edge.edgesConnectedToNode
@@ -245,17 +247,19 @@ void fillInput(
         {
             int j = jIdPair.first;
             int id = jIdPair.second;
-            Edge& edge = (*edgesFromCheck)[currentEdge++];
-            edge.index = id;
+            currentEdge++;
+            Edge& edge = (*edgesFromCheck)[e[id]];
+            edge.index = e[id];
             edge.vn = j;
             edge.cn = i;
             edge.absoluteStartIndex = absoluteStartIndex;
             edge.relativeIndexFromNode = connectedToNode;
             connectedToNode++;
         }
-        for (int id = 0; id < connectedToNode; id++)
+        for (auto jIdPair : H.rows[i])
         {
-            Edge& edge = (*edgesFromCheck)[absoluteStartIndex + id];
+            int id = jIdPair.second;
+            Edge& edge = (*edgesFromCheck)[e[id]];
             edge.edgesConnectedToNode = connectedToNode;
             //std::cout << edge.index << " " << edge.vn << " " << edge.cn
             //    << " " << edge.edgesConnectedToNode
