@@ -28,9 +28,9 @@ const int block_size = 512;
 const int decoders = 100;
 const int blocks = decoders;
 const float SNR = 4;
-const int MAX_ITERATIONS = 15;
+const int MAX_ITERATIONS = 50;
 const int NUMBER_OF_CODEWORDS = 10 * 1000;
-const bool callGPU = false;
+const bool callGPU = true;
 
 void fillInput(std::string, CodeInfo**, Edge**, Edge**, Matrix &);
 SimulationReport simulate(std::string);
@@ -129,19 +129,19 @@ SimulationReport simulate(std::string filename)
         // Kernel execution
         if (callGPU)
         {
-        decodeAWGN<<<blocks, block_size>>>(
-                codeInfo,
-                edgesFromVariable,
-                edgesFromCheck,
-                probP,
-                probQ,
-                probR,
-                sigma2,
-                estimation,
-                codewords,
-                noisedVector,
-                MAX_ITERATIONS,
-                errorInfo);
+            decodeAWGN<<<blocks, block_size>>>(
+                    codeInfo,
+                    edgesFromVariable,
+                    edgesFromCheck,
+                    probP,
+                    probQ,
+                    probR,
+                    sigma2,
+                    estimation,
+                    codewords,
+                    noisedVector,
+                    MAX_ITERATIONS,
+                    errorInfo);
         } else {
             CUDA_CALL(cudaDeviceSynchronize());
             decodeAWGN_CPU(codeInfo,edgesFromVariable,edgesFromCheck,probP,probQ,probR,sigma2,estimation,codewords,noisedVector,MAX_ITERATIONS,errorInfo,blocks,block_size);
