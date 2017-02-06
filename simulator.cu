@@ -12,6 +12,7 @@
 #include <fstream>
 #include <iostream>
 #include <cassert>
+#include <unistd.h>
 
 #define CUDA_CALL(x) do { if((x) != cudaSuccess) { \
     printf("Error at %s:%d\n",__FILE__,__LINE__); \
@@ -24,27 +25,47 @@
 #define MALLOC(x, y) CUDA_CALL(cudaMallocManaged(x, y))
 #define FREE(x) CUDA_CALL(cudaFree(x))
 
-const int block_size = 512;
-const int decoders = 100;
-const int blocks = decoders;
-const float SNR = 4;
+const int BLOCK_SIZE = 512;
+const int DECODERS = 100;
+const int BLOCKS = DECODERS;
 const int MAX_ITERATIONS = 50;
-const int NUMBER_OF_CODEWORDS = 10 * 1000;
-const bool callGPU = true;
+const int DEFAULT_NUMBER_OF_CODEWORDS = 10 * 1000;
+const bool CALL_GPU = true;
+const float DEFAULT_SNR = 3;
 
 void fillInput(std::string, CodeInfo**, Edge**, Edge**, Matrix &);
-SimulationReport simulate(std::string);
+SimulationReport simulate(std::string, float, int);
 
 int main(int argc, char* argv[])
 {
+    float snrFrom = DEFAULT_SNR;
+    float snrTo = DEFAULT_SNR + 0.1;
+    float snrStep = 1;
+    int numberOfCodewords = DEFAULT_NUMBER_OF_CODEWORDS;
+    int opt;
+    while ((opt = getopt(argc, argv, "n:s:")) != -1) {
+        switch (opt) {
+            case 's':
+                sscanf(optarg, "%f:%f:%f", &snrFrom, &snrTo, &snrStep);
+                break;
+            case 'n':
+                numberOfCodewords = atoi(optarg);
+                break;
+            default:
+                printf("Usage: %s [-s snrFrom:snrTo:snrStep] files*\n",
+                        argv[0]);
+                exit(EXIT_FAILURE);
+        }
+    }
+
     std::vector<std::string> inputFilenames;
-    for (int i = 1; i < argc; i++)
+    for (int i = optind; i < argc; i++)
     {
         inputFilenames.push_back(argv[i]);
     }
 
     std::cout << "Results" << std::endl;
-    std::cout << "Filename Time(ms) BER% FER%" << std::endl;
+    std::cout << "Filename SNR Time(ms) BER% FER%" << std::endl;
 
     // Create time measure structures
     cudaEvent_t start, stop;
@@ -53,22 +74,26 @@ int main(int argc, char* argv[])
 
     for (auto filename : inputFilenames)
     {
-        cudaEventRecord(start);
+        for (float snr = snrFrom; snr < snrTo; snr += snrStep)
+        {
+            cudaEventRecord(start);
 
-        // Calling main simulation
-        SimulationReport report = simulate(filename);
+            // Calling main simulation
+            SimulationReport report = simulate(filename, snr, numberOfCodewords);
 
-        cudaEventRecord(stop);
+            cudaEventRecord(stop);
 
-        cudaEventSynchronize(stop);
-        float milliseconds = 0;
-        cudaEventElapsedTime(&milliseconds, start, stop);
+            cudaEventSynchronize(stop);
+            float milliseconds = 0;
+            cudaEventElapsedTime(&milliseconds, start, stop);
 
-        std::cout << filename << " ";
-        std::cout << milliseconds << " ";
-        std::cout << report.BER << " ";
-        std::cout << report.FER << " ";
-        std::cout << std::endl;
+            std::cout << filename << " ";
+            std::cout << snr << " ";
+            std::cout << milliseconds << " ";
+            std::cout << report.BER << " ";
+            std::cout << report.FER << " ";
+            std::cout << std::endl;
+        }
     }
 }
 
@@ -81,7 +106,7 @@ void writeRandomCodeword(float * a, Matrix const & Gt)
                 a[p.first]  = 1 - a[p.first];
 }
 
-SimulationReport simulate(std::string filename)
+SimulationReport simulate(std::string filename, float SNR, int numberOfCodewords)
 {
     CodeInfo* codeInfo;
     Edge* edgesFromVariable;
@@ -93,12 +118,12 @@ SimulationReport simulate(std::string filename)
     float* probP;
     float* probQ;
     float* probR;
-    MALLOC(&probP, decoders * codeInfo->varNodes * sizeof(float));
-    MALLOC(&probQ, decoders * codeInfo->totalEdges * sizeof(float));
-    MALLOC(&probR, decoders * codeInfo->totalEdges * sizeof(float));
+    MALLOC(&probP, DECODERS * codeInfo->varNodes * sizeof(float));
+    MALLOC(&probQ, DECODERS * codeInfo->totalEdges * sizeof(float));
+    MALLOC(&probR, DECODERS * codeInfo->totalEdges * sizeof(float));
 
     float* noisedVector;
-    int noisedVectorSize = decoders * codeInfo->varNodes;
+    int noisedVectorSize = DECODERS * codeInfo->varNodes;
     if (noisedVectorSize % 2 == 1)
         noisedVectorSize++; // curandGenerateNormal works only with even
     MALLOC(&noisedVector, noisedVectorSize * sizeof(float));
@@ -108,7 +133,7 @@ SimulationReport simulate(std::string filename)
     srand(19);
     float* codewords;
     MALLOC(&codewords, noisedVectorSize * sizeof(float));
-    for (int i = 0; i < decoders; i++)
+    for (int i = 0; i < DECODERS; i++)
         writeRandomCodeword(codewords + codeInfo->varNodes * i, Gt);
     float* estimation;
     MALLOC(&estimation, noisedVectorSize * sizeof(float));
@@ -117,8 +142,8 @@ SimulationReport simulate(std::string filename)
     errorInfo->bitErrors = 0;
     errorInfo->frameErrors = 0;
 
-    int numberKernelRuns = NUMBER_OF_CODEWORDS / decoders;
-    float cntFrames = decoders * numberKernelRuns;
+    int numberKernelRuns = numberOfCodewords / DECODERS;
+    float cntFrames = DECODERS * numberKernelRuns;
     float cntBits = cntFrames * codeInfo->varNodes;
     for (int run = 0; run < numberKernelRuns; run++)
     {
@@ -127,9 +152,9 @@ SimulationReport simulate(std::string filename)
         CURAND_CALL(curandGenerateNormal(gen, noisedVector, 
                     noisedVectorSize, 0.0, sqrt(sigma2)));
         // Kernel execution
-        if (callGPU)
+        if (CALL_GPU)
         {
-            decodeAWGN<<<blocks, block_size>>>(
+            decodeAWGN<<<BLOCKS, BLOCK_SIZE>>>(
                     codeInfo,
                     edgesFromVariable,
                     edgesFromCheck,
@@ -144,7 +169,7 @@ SimulationReport simulate(std::string filename)
                     errorInfo);
         } else {
             CUDA_CALL(cudaDeviceSynchronize());
-            decodeAWGN_CPU(codeInfo,edgesFromVariable,edgesFromCheck,probP,probQ,probR,sigma2,estimation,codewords,noisedVector,MAX_ITERATIONS,errorInfo,blocks,block_size);
+            decodeAWGN_CPU(codeInfo,edgesFromVariable,edgesFromCheck,probP,probQ,probR,sigma2,estimation,codewords,noisedVector,MAX_ITERATIONS,errorInfo,BLOCKS,BLOCK_SIZE);
         }
     }
     CUDA_CALL(cudaDeviceSynchronize());
