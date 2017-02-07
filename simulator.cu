@@ -3,6 +3,7 @@
 #include "algebra.h"
 #include "kernel.cu"
 #include "kernelCPU.h"
+#include "filesystem.h"
 
 #include <cuda.h>
 #include <curand.h>
@@ -13,6 +14,7 @@
 #include <iostream>
 #include <cassert>
 #include <unistd.h>
+#include <queue>
 
 #define CUDA_CALL(x) do { if((x) != cudaSuccess) { \
     printf("Error at %s:%d\n",__FILE__,__LINE__); \
@@ -58,10 +60,10 @@ int main(int argc, char* argv[])
         }
     }
 
-    std::vector<std::string> inputFilenames;
+    std::queue<std::string> inputFilenames;
     for (int i = optind; i < argc; i++)
     {
-        inputFilenames.push_back(argv[i]);
+        inputFilenames.push(argv[i]);
     }
 
     std::cout << "Results" << std::endl;
@@ -72,8 +74,19 @@ int main(int argc, char* argv[])
     CUDA_CALL(cudaEventCreate(&start));
     CUDA_CALL(cudaEventCreate(&stop));
 
-    for (auto filename : inputFilenames)
+    while (!inputFilenames.empty())
     {
+        std::string filename = inputFilenames.front();
+        inputFilenames.pop();
+
+        if (isDirectory(filename))
+        {
+            auto files = filesInDirectory(filename);
+            for (auto file : files)
+                inputFilenames.push(file);
+            continue;
+        }
+
         for (float snr = snrFrom; snr < snrTo; snr += snrStep)
         {
             cudaEventRecord(start);
