@@ -27,31 +27,57 @@
 #define MALLOC(x, y) CUDA_CALL(cudaMallocManaged(x, y))
 #define FREE(x) CUDA_CALL(cudaFree(x))
 
+void fillInput(std::string, CodeInfo**, Edge**, Edge**, Matrix &);
+SimulationReport simulate(std::string, float);
+
 const int BLOCK_SIZE = 512;
 const int DECODERS = 100;
 const int BLOCKS = DECODERS;
 const int MAX_ITERATIONS = 50;
 const int DEFAULT_NUMBER_OF_CODEWORDS = 10 * 1000;
-const bool CALL_GPU = true;
+const int MAX_NUMBER_OF_CODEWORDS = 1000 * 1000 * 1000;
+const int DEFAULT_NUMBER_OF_MIN_FER = 100; 
 const float DEFAULT_SNR = 3;
+const bool CALL_GPU = true;
 
-void fillInput(std::string, CodeInfo**, Edge**, Edge**, Matrix &);
-SimulationReport simulate(std::string, float, int);
-
-int main(int argc, char* argv[])
+struct settings_t
 {
+    enum NumberOfRuns { MIN_FER, CODEWORDS } runsType = CODEWORDS;
     float snrFrom = DEFAULT_SNR;
     float snrTo = DEFAULT_SNR + 0.1;
     float snrStep = 1;
     int numberOfCodewords = DEFAULT_NUMBER_OF_CODEWORDS;
+    int numberOfMinFER = DEFAULT_NUMBER_OF_MIN_FER;
+    bool runsTypeSet = false;
+
+    void checkRunsTypeAndSet(NumberOfRuns type)
+    {
+        if (runsTypeSet)
+        {
+            std::cerr << "-n and -f should not be set at the same time" << std::endl;;
+            exit(1);
+        }
+        runsType = type;
+    }
+} settings;
+
+int main(int argc, char* argv[])
+{
     int opt;
-    while ((opt = getopt(argc, argv, "n:s:")) != -1) {
+    while ((opt = getopt(argc, argv, "n:f:s:")) != -1) {
         switch (opt) {
             case 's':
-                sscanf(optarg, "%f:%f:%f", &snrFrom, &snrTo, &snrStep);
+                sscanf(optarg, "%f:%f:%f", &settings.snrFrom,
+                        &settings.snrTo,
+                        &settings.snrStep);
                 break;
             case 'n':
-                numberOfCodewords = atoi(optarg);
+                settings.checkRunsTypeAndSet(settings_t::CODEWORDS);
+                settings.numberOfCodewords = atoi(optarg);
+                break;
+            case 'f':
+                settings.checkRunsTypeAndSet(settings_t::MIN_FER);
+                settings.numberOfMinFER = atoi(optarg);
                 break;
             default:
                 printf("Usage: %s [-s snrFrom:snrTo:snrStep] files*\n",
@@ -87,12 +113,14 @@ int main(int argc, char* argv[])
             continue;
         }
 
-        for (float snr = snrFrom; snr < snrTo; snr += snrStep)
+        for (float snr = settings.snrFrom;
+                snr < settings.snrTo;
+                snr += settings.snrStep)
         {
             cudaEventRecord(start);
 
             // Calling main simulation
-            SimulationReport report = simulate(filename, snr, numberOfCodewords);
+            SimulationReport report = simulate(filename, snr);
 
             cudaEventRecord(stop);
 
@@ -119,7 +147,7 @@ void writeRandomCodeword(float * a, Matrix const & Gt)
                 a[p.first]  = 1 - a[p.first];
 }
 
-SimulationReport simulate(std::string filename, float SNR, int numberOfCodewords)
+SimulationReport simulate(std::string filename, float SNR)
 {
     CodeInfo* codeInfo;
     Edge* edgesFromVariable;
@@ -155,11 +183,12 @@ SimulationReport simulate(std::string filename, float SNR, int numberOfCodewords
     errorInfo->bitErrors = 0;
     errorInfo->frameErrors = 0;
 
-    int numberKernelRuns = numberOfCodewords / DECODERS;
-    float cntFrames = DECODERS * numberKernelRuns;
-    float cntBits = cntFrames * codeInfo->varNodes;
-    for (int run = 0; run < numberKernelRuns; run++)
+    float cntFrames = 0;
+    float cntBits = 0;
+    while (true)
     {
+        cntFrames += DECODERS;
+        cntBits += DECODERS * codeInfo->varNodes;
         // Generate n float on device with 
         // normal distribution mean = 0, stddev = sqrt(sigma2)
         CURAND_CALL(curandGenerateNormal(gen, noisedVector, 
@@ -184,8 +213,17 @@ SimulationReport simulate(std::string filename, float SNR, int numberOfCodewords
             CUDA_CALL(cudaDeviceSynchronize());
             decodeAWGN_CPU(codeInfo,edgesFromVariable,edgesFromCheck,probP,probQ,probR,sigma2,estimation,codewords,noisedVector,MAX_ITERATIONS,errorInfo,BLOCKS,BLOCK_SIZE);
         }
+        CUDA_CALL(cudaDeviceSynchronize());
+
+        if (settings.runsType == settings_t::CODEWORDS &&
+                cntFrames >= settings.numberOfCodewords)
+            break;
+        if (settings.runsType == settings_t::MIN_FER &&
+                errorInfo->frameErrors >= settings.numberOfMinFER)
+            break;
+        if (cntFrames >= MAX_NUMBER_OF_CODEWORDS)
+            break;
     }
-    CUDA_CALL(cudaDeviceSynchronize());
     float BER = errorInfo->bitErrors * 100.0 / cntBits;
     float FER = errorInfo->frameErrors * 100.0 / cntFrames;
 
