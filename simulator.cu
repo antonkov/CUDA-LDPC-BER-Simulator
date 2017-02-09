@@ -49,9 +49,9 @@ struct settings_t
     int numberOfCodewords = DEFAULT_NUMBER_OF_CODEWORDS;
     int numberOfMinFER = DEFAULT_NUMBER_OF_MIN_FER;
     bool runsTypeSet = false;
-    float ferThreshold = 0.01;
+    float ferThreshold = 1e-4;
     // if FER lower than this value, don't calc further 
-    // and print this value for rest snrs because
+    // and print special value for rest of snrs
     // it can take too long
 
     void checkRunsTypeAndSet(NumberOfRuns type)
@@ -100,7 +100,7 @@ int main(int argc, char* argv[])
     }
 
     std::cout << "Results" << std::endl;
-    std::cout << "Filename SNR Time(ms) BER% FER%" << std::endl;
+    std::cout << "Filename SNR Time(ms) BER FER" << std::endl;
 
     // Create time measure structures
     cudaEvent_t start, stop;
@@ -120,19 +120,20 @@ int main(int argc, char* argv[])
             continue;
         }
 
-        SimulationReport report;
-        report.FER = 100;
+        bool exceededThreshold = false;
         for (float snr = settings.snrFrom;
                 snr < settings.snrTo;
                 snr += settings.snrStep)
         {
             cudaEventRecord(start);
 
-            // Check if FER is still big enough
-            if (report.FER >= settings.ferThreshold)
+            SimulationReport report;
+            if (!exceededThreshold)
             {
                 // Calling main simulation
                 report = simulate(filename, snr);
+            } else {
+                report.BER = report.FER = -1;
             }
 
             cudaEventRecord(stop);
@@ -147,6 +148,9 @@ int main(int argc, char* argv[])
             std::cout << report.BER << " ";
             std::cout << report.FER << " ";
             std::cout << std::endl;
+
+            if (report.FER < settings.ferThreshold)
+                exceededThreshold = true;
         }
     }
 }
@@ -237,8 +241,8 @@ SimulationReport simulate(std::string filename, float SNR)
         if (cntFrames >= MAX_NUMBER_OF_CODEWORDS)
             break;
     }
-    float BER = errorInfo->bitErrors * 100.0 / cntBits;
-    float FER = errorInfo->frameErrors * 100.0 / cntFrames;
+    float BER = errorInfo->bitErrors / cntBits;
+    float FER = errorInfo->frameErrors / cntFrames;
 
     // Freeing resources
     FREE(errorInfo);
