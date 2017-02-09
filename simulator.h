@@ -21,6 +21,6 @@ struct ErrorInfo {
 };
 
 struct SimulationReport {
-    float FER;
-    float BER;
+    float FER = 0;
+    float BER = 0;
 };

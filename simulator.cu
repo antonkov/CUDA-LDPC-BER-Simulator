@@ -49,6 +49,10 @@ struct settings_t
     int numberOfCodewords = DEFAULT_NUMBER_OF_CODEWORDS;
     int numberOfMinFER = DEFAULT_NUMBER_OF_MIN_FER;
     bool runsTypeSet = false;
+    float ferThreshold = 0.01;
+    // if FER lower than this value, don't calc further 
+    // and print this value for rest snrs because
+    // it can take too long
 
     void checkRunsTypeAndSet(NumberOfRuns type)
     {
@@ -78,6 +82,9 @@ int main(int argc, char* argv[])
             case 'f':
                 settings.checkRunsTypeAndSet(settings_t::MIN_FER);
                 settings.numberOfMinFER = atoi(optarg);
+                break;
+            case 't':
+                settings.ferThreshold = atof(optarg);
                 break;
             default:
                 printf("Usage: %s [-s snrFrom:snrTo:snrStep] files*\n",
@@ -113,14 +120,20 @@ int main(int argc, char* argv[])
             continue;
         }
 
+        SimulationReport report;
+        report.FER = 100;
         for (float snr = settings.snrFrom;
                 snr < settings.snrTo;
                 snr += settings.snrStep)
         {
             cudaEventRecord(start);
 
-            // Calling main simulation
-            SimulationReport report = simulate(filename, snr);
+            // Check if FER is still big enough
+            if (report.FER >= settings.ferThreshold)
+            {
+                // Calling main simulation
+                report = simulate(filename, snr);
+            }
 
             cudaEventRecord(stop);
 
