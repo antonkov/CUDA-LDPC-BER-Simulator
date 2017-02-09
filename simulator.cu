@@ -42,7 +42,7 @@ const bool CALL_GPU = true;
 
 struct settings_t
 {
-    enum NumberOfRuns { MIN_FER, CODEWORDS } runsType = CODEWORDS;
+    enum NumberOfRuns { MIN_FER, CODEWORDS } runsType = MIN_FER;
     float snrFrom = DEFAULT_SNR;
     float snrTo = DEFAULT_SNR + 0.1;
     float snrStep = 1;
@@ -68,7 +68,7 @@ struct settings_t
 int main(int argc, char* argv[])
 {
     int opt;
-    while ((opt = getopt(argc, argv, "n:f:s:")) != -1) {
+    while ((opt = getopt(argc, argv, "n:f:s:t:")) != -1) {
         switch (opt) {
             case 's':
                 sscanf(optarg, "%f:%f:%f", &settings.snrFrom,
