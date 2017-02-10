@@ -21,16 +21,6 @@ struct settings_t
     // if FER lower than this value, don't calc further 
     // and print special value for rest of snrs
     // it can take too long
-
-    void checkRunsTypeAndSet(simulation_params_t & params, NumberOfRuns type)
-    {
-        if (runsTypeSet)
-        {
-            std::cerr << "-n and -f should not be set at the same time" << std::endl;;
-            exit(1);
-        }
-        params.runsType = type;
-    }
 } settings;
 
 int main(int argc, char* argv[])
@@ -45,13 +35,11 @@ int main(int argc, char* argv[])
                         &settings.snrTo,
                         &settings.snrStep);
                 break;
-            case 'n':
-                settings.checkRunsTypeAndSet(params, CODEWORDS);
+            case 'n': // Max number of codewords
                 params.numberOfCodewords = atoi(optarg);
                 break;
-            case 'f':
-                settings.checkRunsTypeAndSet(params, MIN_FER);
-                params.numberOfMinFER = atoi(optarg);
+            case 'f': // Max number of Frame Errors
+                params.numberOfFrameErrors = atoi(optarg);
                 break;
             case 't':
                 settings.ferThreshold = atof(optarg);

@@ -27,7 +27,6 @@ const int BLOCK_SIZE = 512;
 const int DECODERS = 100;
 const int BLOCKS = DECODERS;
 const int MAX_ITERATIONS = 50;
-const int MAX_NUMBER_OF_CODEWORDS = 1000 * 1000 * 1000;
 const bool CALL_GPU = true;
 
 SimulationReport simulateImpl(simulation_params_t const &);
@@ -130,13 +129,8 @@ SimulationReport simulateImpl(simulation_params_t const & params)
         }
         CUDA_CALL(cudaDeviceSynchronize());
 
-        if (params.runsType == CODEWORDS &&
-                cntFrames >= params.numberOfCodewords)
-            break;
-        if (params.runsType == MIN_FER &&
-                errorInfo->frameErrors >= params.numberOfMinFER)
-            break;
-        if (cntFrames >= MAX_NUMBER_OF_CODEWORDS)
+        if (cntFrames >= params.numberOfCodewords ||
+            errorInfo->frameErrors >= params.numberOfFrameErrors)
             break;
     }
     float BER = errorInfo->bitErrors / cntBits;

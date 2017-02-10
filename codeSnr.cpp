@@ -14,6 +14,7 @@ const float DEFAULT_TARGET_FER = 0.01;
 struct settings_t
 {
     float targetFER = DEFAULT_TARGET_FER;
+    int numberOfIters = 10;
 } settings;
 
 int main(int argc, char* argv[])
@@ -21,13 +22,16 @@ int main(int argc, char* argv[])
     simulation_params_t params;
 
     int opt;
-    while ((opt = getopt(argc, argv, "f:")) != -1) {
+    while ((opt = getopt(argc, argv, "f:i:")) != -1) {
         switch (opt) {
             case 'f':
                 settings.targetFER = atof(optarg);
                 break;
+            case 'i':
+                settings.numberOfIters = atoi(optarg);
+                break;
             default:
-                printf("Usage: %s [-f targetFER] files*\n",
+                printf("Usage: %s [-f targetFER] [-i numberOfIters] files*\n",
                         argv[0]);
                 exit(EXIT_FAILURE);
         }
@@ -54,14 +58,34 @@ int main(int argc, char* argv[])
                 inputFilenames.push(file);
             continue;
         }
-        float result = 0;
-        SimulationReport report;
+
         params.filename = filename;
-        params.snr = 3;
-        report = simulate(params);
+        params.numberOfCodewords = 2 * params.numberOfFrameErrors / settings.targetFER;
+        // Don't need to test more codewords because probability 
+        // that we get less that 100 errors when we expect to get 200
+        // if numberOfFrameErrors = 100 then 3sigma = 0.3 and we have 0.5
+        // if numberOfFrameErrors = 50 then 3sigma = 0.42 and we have 0.5
+
+        float timeSum = 0;
+        float snrFrom = 1, snrTo = 5;
+        SimulationReport report;
+        for (int iter = 0; iter < settings.numberOfIters; iter++)
+        {
+            float snrMid = (snrFrom + snrTo) / 2;
+            params.snr = snrMid;
+            report = simulate(params);
+
+            if (report.FER < settings.targetFER)
+                snrTo = snrMid;
+            else
+                snrFrom = snrMid;
+
+            timeSum += report.timeMs;
+        }
+        float result = snrTo;
 
         std::cout << filename << " ";
-        std::cout << report.timeMs << " ";
+        std::cout << timeSum << " ";
         std::cout << result << " ";
         std::cout << std::endl;
     }

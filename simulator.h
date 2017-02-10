@@ -2,15 +2,13 @@
 
 #include <string>
 
-const int DEFAULT_NUMBER_OF_CODEWORDS = 10 * 1000;
-const int DEFAULT_NUMBER_OF_MIN_FER = 100; 
-enum NumberOfRuns { MIN_FER, CODEWORDS };
+const int DEFAULT_NUMBER_OF_FRAME_ERRORS = 100; 
+const int MAX_NUMBER_OF_CODEWORDS = 1000 * 1000 * 1000;
 
 struct simulation_params_t
 {
-    NumberOfRuns runsType = MIN_FER;
-    int numberOfCodewords = DEFAULT_NUMBER_OF_CODEWORDS;
-    int numberOfMinFER = DEFAULT_NUMBER_OF_MIN_FER;
+    int numberOfCodewords = MAX_NUMBER_OF_CODEWORDS;
+    int numberOfFrameErrors = DEFAULT_NUMBER_OF_FRAME_ERRORS;
     std::string filename;
     float snr;
 };
