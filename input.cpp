@@ -89,5 +89,37 @@ void readMatrix(std::istream& in, Matrix* mPtr)
             std::sort(m.rows[i].begin(), m.rows[i].end());
         for (int j = 0; j < m.n; j++)
             std::sort(m.cols[j].begin(), m.cols[j].end());
+    } else if (inputType == "alist") {
+        in >> m.n >> m.k;
+        m.rows = vecOfVecs(m.k);
+        m.cols = vecOfVecs(m.n);
+        m.totalCells = 0;
+
+        int maxInCol, maxInRow;
+        in >> maxInCol >> maxInRow;
+        int dummy;
+        for (int i = 0; i < m.n; i++)
+            in >> dummy;
+        for (int i = 0; i < m.k; i++)
+            in >> dummy;
+        for (int col = 0; col < m.n; col++)
+            for (int i = 0; i < maxInCol; i++)
+                in >> dummy;
+        for (int row = 0; row < m.k; row++) {
+            for (int j = 0; j < maxInRow; j++) {
+                int col;
+                in >> col;
+                if (col != 0) {
+                    col--;
+                    int id = m.totalCells++;
+                    m.rows[row].push_back(std::make_pair(col, id));
+                    m.cols[col].push_back(std::make_pair(row, id));
+                }
+            }
+        }
+        for (int i = 0; i < m.k; i++)
+            std::sort(m.rows[i].begin(), m.rows[i].end());
+        for (int j = 0; j < m.n; j++)
+            std::sort(m.cols[j].begin(), m.cols[j].end());
     }
 }
