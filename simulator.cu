@@ -3,18 +3,14 @@
 #include "algebra.h"
 #include "kernel.cu"
 #include "kernelCPU.h"
-#include "filesystem.h"
 
 #include <cuda.h>
 #include <curand.h>
-#include <string>
 #include <vector>
 #include <cstdio>
 #include <fstream>
 #include <iostream>
 #include <cassert>
-#include <unistd.h>
-#include <queue>
 
 #define CUDA_CALL(x) do { if((x) != cudaSuccess) { \
     printf("Error at %s:%d\n",__FILE__,__LINE__); \
@@ -27,132 +23,34 @@
 #define MALLOC(x, y) CUDA_CALL(cudaMallocManaged(x, y))
 #define FREE(x) CUDA_CALL(cudaFree(x))
 
-void fillInput(std::string, CodeInfo**, Edge**, Edge**, Matrix &);
-SimulationReport simulate(std::string, float);
-
 const int BLOCK_SIZE = 512;
 const int DECODERS = 100;
 const int BLOCKS = DECODERS;
 const int MAX_ITERATIONS = 50;
-const int DEFAULT_NUMBER_OF_CODEWORDS = 10 * 1000;
 const int MAX_NUMBER_OF_CODEWORDS = 1000 * 1000 * 1000;
-const int DEFAULT_NUMBER_OF_MIN_FER = 100; 
-const float DEFAULT_SNR = 3;
 const bool CALL_GPU = true;
 
-struct settings_t
+SimulationReport simulateImpl(simulation_params_t const &);
+void fillInput(std::string, CodeInfo**, Edge**, Edge**, Matrix &);
+
+SimulationReport simulate(simulation_params_t const & params)
 {
-    enum NumberOfRuns { MIN_FER, CODEWORDS } runsType = MIN_FER;
-    float snrFrom = DEFAULT_SNR;
-    float snrTo = DEFAULT_SNR + 0.1;
-    float snrStep = 1;
-    int numberOfCodewords = DEFAULT_NUMBER_OF_CODEWORDS;
-    int numberOfMinFER = DEFAULT_NUMBER_OF_MIN_FER;
-    bool runsTypeSet = false;
-    float ferThreshold = 1e-4;
-    // if FER lower than this value, don't calc further 
-    // and print special value for rest of snrs
-    // it can take too long
-
-    void checkRunsTypeAndSet(NumberOfRuns type)
-    {
-        if (runsTypeSet)
-        {
-            std::cerr << "-n and -f should not be set at the same time" << std::endl;;
-            exit(1);
-        }
-        runsType = type;
-    }
-} settings;
-
-int main(int argc, char* argv[])
-{
-    int opt;
-    while ((opt = getopt(argc, argv, "n:f:s:t:")) != -1) {
-        switch (opt) {
-            case 's':
-                sscanf(optarg, "%f:%f:%f", &settings.snrFrom,
-                        &settings.snrTo,
-                        &settings.snrStep);
-                break;
-            case 'n':
-                settings.checkRunsTypeAndSet(settings_t::CODEWORDS);
-                settings.numberOfCodewords = atoi(optarg);
-                break;
-            case 'f':
-                settings.checkRunsTypeAndSet(settings_t::MIN_FER);
-                settings.numberOfMinFER = atoi(optarg);
-                break;
-            case 't':
-                settings.ferThreshold = atof(optarg);
-                break;
-            default:
-                printf("Usage: %s [-s snrFrom:snrTo:snrStep] files*\n",
-                        argv[0]);
-                exit(EXIT_FAILURE);
-        }
-    }
-
-    std::queue<std::string> inputFilenames;
-    for (int i = optind; i < argc; i++)
-    {
-        inputFilenames.push(argv[i]);
-    }
-
-    std::cout << "Results" << std::endl;
-    std::cout << "Filename SNR Time(ms) BER FER" << std::endl;
-
     // Create time measure structures
     cudaEvent_t start, stop;
     CUDA_CALL(cudaEventCreate(&start));
     CUDA_CALL(cudaEventCreate(&stop));
 
-    while (!inputFilenames.empty())
-    {
-        std::string filename = inputFilenames.front();
-        inputFilenames.pop();
+    cudaEventRecord(start);
 
-        if (isDirectory(filename))
-        {
-            auto files = filesInDirectory(filename);
-            for (auto file : files)
-                inputFilenames.push(file);
-            continue;
-        }
+    SimulationReport report = simulateImpl(params);
+    cudaEventRecord(stop);
 
-        bool exceededThreshold = false;
-        for (float snr = settings.snrFrom;
-                snr < settings.snrTo;
-                snr += settings.snrStep)
-        {
-            cudaEventRecord(start);
+    cudaEventSynchronize(stop);
+    float milliseconds = 0;
+    cudaEventElapsedTime(&milliseconds, start, stop);
+    report.timeMs = milliseconds;
 
-            SimulationReport report;
-            if (!exceededThreshold)
-            {
-                // Calling main simulation
-                report = simulate(filename, snr);
-            } else {
-                report.BER = report.FER = -1;
-            }
-
-            cudaEventRecord(stop);
-
-            cudaEventSynchronize(stop);
-            float milliseconds = 0;
-            cudaEventElapsedTime(&milliseconds, start, stop);
-
-            std::cout << filename << " ";
-            std::cout << snr << " ";
-            std::cout << milliseconds << " ";
-            std::cout << report.BER << " ";
-            std::cout << report.FER << " ";
-            std::cout << std::endl;
-
-            if (report.FER < settings.ferThreshold)
-                exceededThreshold = true;
-        }
-    }
+    return report;
 }
 
 void writeRandomCodeword(float * a, Matrix const & Gt)
@@ -164,14 +62,14 @@ void writeRandomCodeword(float * a, Matrix const & Gt)
                 a[p.first]  = 1 - a[p.first];
 }
 
-SimulationReport simulate(std::string filename, float SNR)
+SimulationReport simulateImpl(simulation_params_t const & params)
 {
     CodeInfo* codeInfo;
     Edge* edgesFromVariable;
     Edge* edgesFromCheck;
     Matrix Gt;
-    fillInput(filename, &codeInfo, &edgesFromVariable, &edgesFromCheck, Gt);
-    float sigma2 = pow(10.0, -SNR / 10.0);
+    fillInput(params.filename, &codeInfo, &edgesFromVariable, &edgesFromCheck, Gt);
+    float sigma2 = pow(10.0, -params.snr / 10.0);
 
     float* probP;
     float* probQ;
@@ -232,11 +130,11 @@ SimulationReport simulate(std::string filename, float SNR)
         }
         CUDA_CALL(cudaDeviceSynchronize());
 
-        if (settings.runsType == settings_t::CODEWORDS &&
-                cntFrames >= settings.numberOfCodewords)
+        if (params.runsType == CODEWORDS &&
+                cntFrames >= params.numberOfCodewords)
             break;
-        if (settings.runsType == settings_t::MIN_FER &&
-                errorInfo->frameErrors >= settings.numberOfMinFER)
+        if (params.runsType == MIN_FER &&
+                errorInfo->frameErrors >= params.numberOfMinFER)
             break;
         if (cntFrames >= MAX_NUMBER_OF_CODEWORDS)
             break;

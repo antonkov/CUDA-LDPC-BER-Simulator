@@ -1,5 +1,8 @@
-simulator: bin/input.o bin/kernel.o bin/algebra.o bin/kernelCPU.o bin/filesystem.o
-	nvcc -lcurand -lboost_system -lboost_filesystem -ccbin g++ -std=c++11 -o simulator bin/input.o bin/kernel.o bin/algebra.o bin/kernelCPU.o bin/filesystem.o
+simulator: bin/filesystem.o bin/libsimulator.a simulator_frontend.cpp 
+	nvcc -Lbin -lcurand -lboost_system -lboost_filesystem -lsimulator -ccbin g++ -std=c++11 -o simulator bin/filesystem.o simulator_frontend.cpp
+
+bin/libsimulator.a: bin/input.o bin/kernel.o bin/algebra.o bin/kernelCPU.o
+	ar rcs bin/libsimulator.a bin/input.o bin/kernel.o bin/algebra.o bin/kernelCPU.o
 
 bin/kernel.o: simulator.cu simulator.h kernel.cu
 	nvcc -ccbin g++ -std=c++11 -o bin/kernel.o -c simulator.cu

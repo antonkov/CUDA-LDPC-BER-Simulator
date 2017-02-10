@@ -1,5 +1,20 @@
 #pragma once
 
+#include <string>
+
+const int DEFAULT_NUMBER_OF_CODEWORDS = 10 * 1000;
+const int DEFAULT_NUMBER_OF_MIN_FER = 100; 
+enum NumberOfRuns { MIN_FER, CODEWORDS };
+
+struct simulation_params_t
+{
+    NumberOfRuns runsType = MIN_FER;
+    int numberOfCodewords = DEFAULT_NUMBER_OF_CODEWORDS;
+    int numberOfMinFER = DEFAULT_NUMBER_OF_MIN_FER;
+    std::string filename;
+    float snr;
+};
+
 struct Edge {
     int index; // e array
     int vn;    // v array
@@ -23,4 +38,7 @@ struct ErrorInfo {
 struct SimulationReport {
     float FER = 0;
     float BER = 0;
+    float timeMs;
 };
+
+SimulationReport simulate(simulation_params_t const &);
