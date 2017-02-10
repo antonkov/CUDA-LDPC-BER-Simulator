@@ -1,3 +1,8 @@
+main: codeSnr simulator
+
+codeSnr: bin/filesystem.o bin/libsimulator.a codeSnr.cpp
+	nvcc -Lbin -lcurand -lboost_system -lboost_filesystem -lsimulator -ccbin g++ -std=c++11 -o codeSnr bin/filesystem.o codeSnr.cpp
+
 simulator: bin/filesystem.o bin/libsimulator.a simulator_frontend.cpp 
 	nvcc -Lbin -lcurand -lboost_system -lboost_filesystem -lsimulator -ccbin g++ -std=c++11 -o simulator bin/filesystem.o simulator_frontend.cpp
 

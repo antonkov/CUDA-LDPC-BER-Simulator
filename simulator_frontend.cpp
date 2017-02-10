@@ -9,7 +9,6 @@
 #include <unistd.h>
 #include <queue>
 
-const int MAX_NUMBER_OF_CODEWORDS = 1000 * 1000 * 1000;
 const float DEFAULT_SNR = 3;
 
 struct settings_t
