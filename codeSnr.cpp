@@ -65,6 +65,11 @@ int main(int argc, char* argv[])
         // that we get less that 100 errors when we expect to get 200
         // if numberOfFrameErrors = 100 then 3sigma = 0.3 and we have 0.5
         // if numberOfFrameErrors = 50 then 3sigma = 0.42 and we have 0.5
+        // in 3 sigma 0.999
+        // in 4 sigma 0.99997
+        // in 5 sigma 0.999999997 and one run takes roughly 0.1s
+        // expected time to get error with 5 sigma 300 million seconds
+        // or 570 years or running ;) 
 
         float timeSum = 0;
         float snrFrom = 1, snrTo = 5;
