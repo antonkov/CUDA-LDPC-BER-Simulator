@@ -24,5 +24,8 @@ bin/algebra.o: algebra.cpp algebra.h
 bin/filesystem.o: filesystem.cpp filesystem.h
 	nvcc -ccbin g++ -std=c++11 -o bin/filesystem.o -c filesystem.cpp
 
+findTop: bin/filesystem.o bin/libsimulator.a findTop.cpp
+	nvcc -Lbin -lcurand -lboost_system -lboost_filesystem -lsimulator -ccbin g++ -std=c++11 -o findTop bin/filesystem.o findTop.cpp
+
 clean:
-	rm codeSnr simulator bin/*
+	rm findTop codeSnr simulator bin/*
