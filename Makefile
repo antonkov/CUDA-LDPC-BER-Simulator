@@ -25,4 +25,4 @@ bin/filesystem.o: filesystem.cpp filesystem.h
 	nvcc -ccbin g++ -std=c++11 -o bin/filesystem.o -c filesystem.cpp
 
 clean:
-	rm simulator bin/*
+	rm codeSnr simulator bin/*
