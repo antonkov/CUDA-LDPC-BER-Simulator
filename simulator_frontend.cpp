@@ -45,7 +45,7 @@ int main(int argc, char* argv[])
                 settings.ferThreshold = atof(optarg);
                 break;
             default:
-                printf("Usage: %s [-s snrFrom:snrTo:snrStep] files*\n",
+                printf("Usage: %s [-s snrFrom:snrTo:snrStep] [-n maxNumberOfCodewords] [-f maxNumberOfFrameErrors] [-t ferThreshold] files*\n",
                         argv[0]);
                 exit(EXIT_FAILURE);
         }

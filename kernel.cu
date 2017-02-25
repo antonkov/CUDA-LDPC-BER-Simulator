@@ -30,8 +30,10 @@ __device__ void iterateToZ(
             fSum += logtanh(fabs(L[eAdj.index]));
         }
         float val = alphaProd * logtanh(fSum); // fSum is positive
-        val = min(val, 19.07);
-        val = max(val, -19.07);
+        // >= 16 overflow for length 2304
+        // <= 10 not enough precission for length 2304
+        val = min(val, 13.07); 
+        val = max(val, -13.07);
         Z[e.index] = val;
     }
     __syncthreads();
@@ -132,6 +134,7 @@ __global__ void decodeAWGN(
     {
         float val = codewords[p] * 2 - 1 + noisedVector[p];
         y[p] = -2 * val / sigma2;
+        // minus because gallager use (-1) ^ c where 1 should become -1
     }
     for (int p = threadIdx.x; p < codeInfo->totalEdges; p += blockDim.x)
         Z[p] = L[p] = 0;
