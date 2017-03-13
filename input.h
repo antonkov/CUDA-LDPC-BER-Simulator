@@ -3,7 +3,7 @@
 #include <vector>
 #include <istream>
 
-typedef std::vector<std::vector<std::pair<int, int>>> cells_t;
+typedef std::vector<std::vector<std::pair<int, int> > > cells_t;
 
 struct Matrix
 {

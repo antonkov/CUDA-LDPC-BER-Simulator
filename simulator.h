@@ -1,5 +1,7 @@
 #pragma once
 
+#include "input.h"
+
 #include <string>
 
 const int DEFAULT_NUMBER_OF_FRAME_ERRORS = 100; 
@@ -9,7 +11,6 @@ struct simulation_params_t
 {
     int numberOfCodewords = MAX_NUMBER_OF_CODEWORDS;
     int numberOfFrameErrors = DEFAULT_NUMBER_OF_FRAME_ERRORS;
-    std::string filename;
     float snr;
 };
 
@@ -33,10 +34,29 @@ struct ErrorInfo {
     unsigned long long frameErrors;
 };
 
+struct Data
+{
+    CodeInfo* codeInfo;
+    Edge* edgesFromVariable;
+    Edge* edgesFromCheck;
+    Matrix Gt;
+    float* probP;
+    float* probQ;
+    float* probR;
+    float* noisedVector;
+    int noisedVectorSize;
+    float* codewords;
+    float* estimation;
+    ErrorInfo* errorInfo;
+
+    Data(std::string const & filename);
+    ~Data();
+};
+
 struct SimulationReport {
     float FER = 0;
     float BER = 0;
     float timeMs;
 };
 
-SimulationReport simulate(simulation_params_t const &);
+SimulationReport simulate(Data const & data, simulation_params_t const &);

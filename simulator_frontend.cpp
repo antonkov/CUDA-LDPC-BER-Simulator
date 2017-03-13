@@ -73,6 +73,7 @@ int main(int argc, char* argv[])
             continue;
         }
 
+        Data data(filename);
         bool exceededThreshold = false;
         for (float snr = settings.snrFrom;
                 snr < settings.snrTo;
@@ -82,9 +83,8 @@ int main(int argc, char* argv[])
             if (!exceededThreshold)
             {
                 // Calling main simulation
-                params.filename = filename;
                 params.snr = snr;
-                report = simulate(params);
+                report = simulate(data, params);
             } else {
                 report.BER = report.FER = -1;
                 report.timeMs = 0;

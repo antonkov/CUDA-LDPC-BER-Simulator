@@ -59,7 +59,6 @@ int main(int argc, char* argv[])
             continue;
         }
 
-        params.filename = filename;
         params.numberOfCodewords = 2 * params.numberOfFrameErrors / settings.targetFER;
         // Don't need to test more codewords because probability 
         // that we get less that 100 errors when we expect to get 200
@@ -73,12 +72,13 @@ int main(int argc, char* argv[])
 
         float timeSum = 0;
         float snrFrom = 1, snrTo = 5;
+        Data data(filename);
         SimulationReport report;
         for (int iter = 0; iter < settings.numberOfIters; iter++)
         {
             float snrMid = (snrFrom + snrTo) / 2;
             params.snr = snrMid;
-            report = simulate(params);
+            report = simulate(data, params);
 
             if (report.FER < settings.targetFER)
                 snrTo = snrMid;
